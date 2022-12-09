@@ -45,6 +45,7 @@ int close_files_arr(FILE **files_arr, int num_counters)
 
 void *worker_function(void *vargp)
 {
+	/* need to sleep untill dispatcher wake him -> start work */
 	sleep(1000);
 }
 
