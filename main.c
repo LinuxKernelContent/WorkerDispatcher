@@ -3,6 +3,7 @@
 #include <stdlib.h>
 #include <string.h>
 #include <unistd.h>
+#include <pthread.h>
 
 #define MAX_NUM_THREADS 4096
 #define MAX_NUM_COUNTERS 100
@@ -25,7 +26,7 @@ int init_file_arr(FILE **files_arr, int num_counters)
 	for (i = 0; i < num_counters; i++) {
 		sprintf(counter_file_name, "counter%.2d", i);
 		files_arr[i] = fopen(counter_file_name, "w+");
-		fprintf(files_arr[i], "%lld", 0);
+		fprintf(files_arr[i], "%d", 0);
 	}
 
 	return 0; 
@@ -42,12 +43,46 @@ int close_files_arr(FILE **files_arr, int num_counters)
 	return 0;
 }
 
+void *worker_function(void *vargp)
+{
+	sleep(1000);
+}
+
+int init_pthread_arr(pthread_t *theards_arr, int num_threads)
+{
+	int i;
+
+	for (i = 0; i < num_threads; i++) {
+		if (pthread_create(&theards_arr[i], NULL, &worker_function, NULL) != 0) {
+			perror("Failed to create thread");
+			return 1;
+		}
+		printf("Thread %d has started\n", i);
+	}
+
+	return 0; 
+}
+
+int finish_pthread_exe(pthread_t *theards_arr, int num_threads)
+{
+	int i;
+
+    for (i = 0; i < num_threads; i++) {
+        if (pthread_cancel(theards_arr[i]) != 0) {
+            return 2;
+        }
+        printf("Thread %d has finished execution\n", i);
+    }
+	return 0;
+}
+
 int main(int argc, char **argv)
 {
    int num_threads = atoi(argv[2]), num_counters = atoi(argv[3]),
-		log_enable = atoi(argv[4]), ret;
-	FILE** files_arr = malloc(sizeof(FILE*) * (MAX_NUM_COUNTERS - 1));
-
+   		log_enable = atoi(argv[4]), ret;
+	FILE **files_arr = malloc(sizeof(FILE*) * (MAX_NUM_COUNTERS - 1));
+	pthread_t theards_arr[MAX_NUM_THREADS];
+	
 	ret = validate_args(num_threads, num_counters, log_enable);
 	if (ret) {
 		fprintf(stdout, "Invalid argv...\n");
@@ -55,12 +90,12 @@ int main(int argc, char **argv)
 	}
 
 	init_file_arr(files_arr, num_counters);
+	init_pthread_arr(theards_arr, num_threads);
 	
-	
 
 
 
-
+	finish_pthread_exe(theards_arr, num_threads);
 	close_files_arr(files_arr, num_counters);
 	free(files_arr);
 	return 0;

@@ -1,5 +1,5 @@
 main: main.c
-	gcc -Wall -Wextra -g *.c -o main
+	gcc -Wall -Wextra -g -pthread *.c -o main
 
 clean:
 	\rm main
