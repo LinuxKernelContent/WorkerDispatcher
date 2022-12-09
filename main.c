@@ -82,18 +82,27 @@ int main(int argc, char **argv)
    		log_enable = atoi(argv[4]), ret;
 	FILE **files_arr = malloc(sizeof(FILE*) * (MAX_NUM_COUNTERS - 1));
 	pthread_t theards_arr[MAX_NUM_THREADS];
-	
+
+	/* Check user args */
 	ret = validate_args(num_threads, num_counters, log_enable);
 	if (ret) {
 		fprintf(stdout, "Invalid argv...\n");
 		exit(0);
 	}
 
+	/* Init files & pthreads arrays */
 	init_file_arr(files_arr, num_counters);
 	init_pthread_arr(theards_arr, num_threads);
-	
 
-
+	/* Parse cmd file line by line 
+	 * implement sidpatcher commands
+	 * implement parsing job string by strtok(";")
+	 * for worker run allover the commands
+	 * else(dispatcher) run on lines
+	 * if its worker commands need to choose worker and protect
+	 * 	file with mutex.
+	 * Do we need to implement fifo?
+	 */
 
 	finish_pthread_exe(theards_arr, num_threads);
 	close_files_arr(files_arr, num_counters);
