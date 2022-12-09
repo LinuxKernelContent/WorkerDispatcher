@@ -5,9 +5,10 @@
 #include <unistd.h>
 #include <pthread.h>
 
-#define MAX_NUM_THREADS 4096
-#define MAX_NUM_COUNTERS 100
-#define MAX_COUNTER_NAME  10
+#define MAX_NUM_THREADS		4096
+#define MAX_NUM_COUNTERS	100
+#define MAX_COUNTER_NAME	10
+#define MAX_LINE_SIZE		256
 
 int validate_args(int num_threads, int num_counters, int log_enable)
 {
@@ -80,9 +81,12 @@ int finish_pthread_exe(pthread_t *theards_arr, int num_threads)
 int main(int argc, char **argv)
 {
    int num_threads = atoi(argv[2]), num_counters = atoi(argv[3]),
-   		log_enable = atoi(argv[4]), ret;
+   		log_enable = atoi(argv[4]), ret, line_count;
 	FILE **files_arr = malloc(sizeof(FILE*) * (MAX_NUM_COUNTERS - 1));
 	pthread_t theards_arr[MAX_NUM_THREADS];
+    char *line_buf = NULL;
+	ssize_t line_size;
+	size_t line_buf_size = 0;
 
 	/* Check user args */
 	ret = validate_args(num_threads, num_counters, log_enable);
@@ -105,6 +109,33 @@ int main(int argc, char **argv)
 	 * Do we need to implement fifo?
 	 */
 
+ FILE *cmd_file = fopen(argv[1], "r");
+  if (!cmd_file)
+  {
+    fprintf(stderr, "Error opening file '%s'\n", argv[1]);
+    return EXIT_FAILURE;
+  }
+
+  /* Get the first line of the file. */
+  line_size = getline(&line_buf, &line_buf, cmd_file);
+
+  /* Loop through until we are done with the file. */
+  while (line_size >= 0)
+  {
+    /* Increment our line count */
+    line_count++;
+
+    /* Show the line details */
+    printf("line[%06d]: chars=%06zd, buf size=%06zu, contents: %s", line_count,
+        line_size, line_size, line_buf);
+
+    /* Get the next line */
+    line_size = getline(&line_buf, &line_buf_size, cmd_file);
+  }
+
+
+	free(line_buf);
+    fclose(cmd_file);
 	finish_pthread_exe(theards_arr, num_threads);
 	close_files_arr(files_arr, num_counters);
 	free(files_arr);
