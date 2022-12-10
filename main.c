@@ -78,6 +78,27 @@ int finish_pthread_exe(pthread_t *theards_arr, int num_threads)
 	return 0;
 }
 
+int parse_line_args(char *line_args[MAX_LINE_SIZE], char *line_buf,
+	size_t line_buf_size)
+{
+	int argc = 0;
+
+	/* Get the first token (cmd name) */
+	line_args[argc] = strtok(line_buf, ";");
+
+	/* Walk through the other tokens (parameters) */
+	while((line_args[argc] != NULL) && (argc < line_buf_size)) {
+		line_args[++argc] = strtok(NULL, ";");
+	}
+
+	return argc;
+}
+
+void remove_new_line_char(char *string)
+{
+	string[strcspn(string, "\n")] = 0; 
+}
+
 int main(int argc, char **argv)
 {
    int num_threads = atoi(argv[2]), num_counters = atoi(argv[3]),
@@ -85,9 +106,10 @@ int main(int argc, char **argv)
 	FILE **files_arr = malloc(sizeof(FILE*) * (MAX_NUM_COUNTERS - 1));
 	pthread_t theards_arr[MAX_NUM_THREADS];
     char *line_buf = NULL;
-	ssize_t line_size;
-	size_t line_buf_size = 0;
-
+	int line_size;
+	int line_buf_size = MAX_LINE_SIZE;
+	char *line_args[MAX_LINE_SIZE];
+	int args_line_num = 0;
 	/* Check user args */
 	ret = validate_args(num_threads, num_counters, log_enable);
 	if (ret) {
@@ -109,29 +131,26 @@ int main(int argc, char **argv)
 	 * Do we need to implement fifo?
 	 */
 
- FILE *cmd_file = fopen(argv[1], "r");
-  if (!cmd_file)
-  {
-    fprintf(stderr, "Error opening file '%s'\n", argv[1]);
-    return EXIT_FAILURE;
-  }
+	FILE *cmd_file = fopen(argv[1], "r");
+	if (!cmd_file) {
+		fprintf(stderr, "Error opening file '%s'\n", argv[1]);
+		return EXIT_FAILURE;
+	}
 
-  /* Get the first line of the file. */
-  line_size = getline(&line_buf, &line_buf, cmd_file);
+	/* Get the first line of the file. */
+	line_size = getline(&line_buf, &line_buf, cmd_file);
 
-  /* Loop through until we are done with the file. */
-  while (line_size >= 0)
-  {
-    /* Increment our line count */
-    line_count++;
-
-    /* Show the line details */
-    printf("line[%06d]: chars=%06zd, buf size=%06zu, contents: %s", line_count,
-        line_size, line_size, line_buf);
-
-    /* Get the next line */
-    line_size = getline(&line_buf, &line_buf_size, cmd_file);
-  }
+	/* Loop through until we are done with the file. */
+	while (line_size >= 0)
+	{
+		/* Increment our line count */
+		line_count++;
+		/* Parse line to arr of arguments(strings) */
+		remove_new_line_char(line_buf);
+		args_line_num = parse_line_args(line_args, line_buf, line_buf_size);
+		/* Get the next line */
+		line_size = getline(&line_buf, &line_buf_size, cmd_file);
+	}
 
 
 	free(line_buf);
