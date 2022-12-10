@@ -10,6 +10,9 @@
 #define MAX_COUNTER_NAME	10
 #define MAX_LINE_SIZE		256
 
+/*
+ * This function check that args fron user in they limit.
+ */
 int validate_args(int num_threads, int num_counters, int log_enable)
 {
 	if (num_threads > MAX_NUM_THREADS || num_counters > MAX_NUM_COUNTERS ||
@@ -19,6 +22,9 @@ int validate_args(int num_threads, int num_counters, int log_enable)
 	return 0;
 }
 
+/*
+ * This function open counter files.
+ */
 int init_file_arr(FILE **files_arr, int num_counters)
 {
 	int i;
@@ -33,6 +39,9 @@ int init_file_arr(FILE **files_arr, int num_counters)
 	return 0; 
 }
 
+/*
+ * This function close counter files.
+ */
 int close_files_arr(FILE **files_arr, int num_counters)
 {
 	int i;
@@ -44,12 +53,18 @@ int close_files_arr(FILE **files_arr, int num_counters)
 	return 0;
 }
 
+/*
+ * This is the worker function.
+ */
 void *worker_function(void *vargp)
 {
 	/* need to sleep untill dispatcher wake him -> start work */
 	sleep(1000);
 }
 
+/*
+ * This function create the pthreads -> workers.
+ */
 int init_pthread_arr(pthread_t *theards_arr, int num_threads)
 {
 	int i;
@@ -65,6 +80,9 @@ int init_pthread_arr(pthread_t *theards_arr, int num_threads)
 	return 0; 
 }
 
+/*
+ * This function cancel the pthreads.
+ */
 int finish_pthread_exe(pthread_t *theards_arr, int num_threads)
 {
 	int i;
@@ -78,6 +96,9 @@ int finish_pthread_exe(pthread_t *theards_arr, int num_threads)
 	return 0;
 }
 
+/*
+ * This function parse the line buf-> array of str(=="argv").
+ */
 int parse_line_args(char *line_args[MAX_LINE_SIZE], char *line_buf,
 	size_t line_buf_size)
 {
@@ -94,9 +115,12 @@ int parse_line_args(char *line_args[MAX_LINE_SIZE], char *line_buf,
 	return argc;
 }
 
+/*
+ * This function remoce an \n' character from line buf.
+ */
 void remove_new_line_char(char *string)
 {
-	string[strcspn(string, "\n")] = 0; 
+	string[strcspn(string, "\n")] = 0;	
 }
 
 int main(int argc, char **argv)
