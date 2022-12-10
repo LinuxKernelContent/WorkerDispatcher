@@ -93,7 +93,17 @@ int finish_pthread_exe(pthread_t *theards_arr, int num_threads)
         }
         printf("Thread %d has finished execution\n", i);
     }
+
 	return 0;
+}
+
+/*
+ * Wait for all pending background commands to complete .
+ */
+void wait_pending_jobs(pthread_t *theards_arr, int num_threads)
+{
+	for (int i = 0; i < num_threads; i++)
+		pthread_join(theards_arr[i], NULL);
 }
 
 /*
@@ -123,17 +133,75 @@ void remove_new_line_char(char *string)
 	string[strcspn(string, "\n")] = 0;	
 }
 
+/*
+ * This function exe worker job.
+ */
+int exe_worker_job(char *line_args[MAX_LINE_SIZE], int args_line_num, int num_threads,
+	int num_counters, int log_enable, FILE **files_arr, pthread_t *theards_arr)
+{
+	/*exe worker job due to line_arv[1] == "worker" */
+}
+
+/*
+ * This function convert char to int.
+ */
+int char_to_int(char c)
+{
+	return c - '0';
+}
+/*
+ * This function exe dispatcher job.
+ */
+int exe_dispatcher_job(char *line_args[MAX_LINE_SIZE], int args_line_num, int num_threads,
+	int num_counters, int log_enable, FILE **files_arr, pthread_t *theards_arr)
+{
+	int msleep_val;
+
+	if (strcmp(line_args[0], "dispatcher_wait") == 0) {
+		wait_pending_jobs(theards_arr, num_threads);
+	} else if (strncmp(line_args[0], "dispatcher_msleep", strlen("dispatcher_msleep")) == 0) {
+		msleep_val = char_to_int(line_args[0][18]);
+		if (!line_args[0][18]) {
+			fprintf(stdout, "args missing...\n");
+		} else {
+			msleep_val = char_to_int(line_args[0][18]);
+			sleep(msleep_val);
+		}
+	}
+
+	return 0;
+}
+
+/*
+ * This function decide if job is dispatcher or worker job.
+ */
+int exe_job(char *line_args[MAX_LINE_SIZE], int args_line_num, int num_threads,
+	int num_counters, int log_enable, FILE **files_arr, pthread_t *theards_arr)
+{
+	/* If line is empty continue */
+	if (!args_line_num)
+		return 0;
+	
+	if (strcmp(line_args[0], "worker") == 0) {
+		exe_worker_job(line_args, args_line_num, num_threads, num_counters,
+			log_enable, files_arr, theards_arr);
+	} else {
+		exe_dispatcher_job(line_args, args_line_num, num_threads, num_counters,
+			log_enable, files_arr, theards_arr);
+	}
+
+	return 0;
+}
+
 int main(int argc, char **argv)
 {
    int num_threads = atoi(argv[2]), num_counters = atoi(argv[3]),
-   		log_enable = atoi(argv[4]), ret, line_count;
+   		log_enable = atoi(argv[4]), ret, line_count, line_size,
+		line_buf_size = MAX_LINE_SIZE, args_line_num;
+	char *line_args[MAX_LINE_SIZE], *line_buf = NULL;
 	FILE **files_arr = malloc(sizeof(FILE*) * (MAX_NUM_COUNTERS - 1));
-	pthread_t theards_arr[MAX_NUM_THREADS];
-    char *line_buf = NULL;
-	int line_size;
-	int line_buf_size = MAX_LINE_SIZE;
-	char *line_args[MAX_LINE_SIZE];
-	int args_line_num = 0;
+	pthread_t theards_arr[MAX_NUM_THREADS];    
+
 	/* Check user args */
 	ret = validate_args(num_threads, num_counters, log_enable);
 	if (ret) {
@@ -145,7 +213,7 @@ int main(int argc, char **argv)
 	init_file_arr(files_arr, num_counters);
 	init_pthread_arr(theards_arr, num_threads);
 
-	/* Parse cmd file line by line 
+	/*
 	 * implement sidpatcher commands
 	 * implement parsing job string by strtok(";")
 	 * for worker run allover the commands
@@ -169,9 +237,15 @@ int main(int argc, char **argv)
 	{
 		/* Increment our line count */
 		line_count++;
+	
 		/* Parse line to arr of arguments(strings) */
 		remove_new_line_char(line_buf);
 		args_line_num = parse_line_args(line_args, line_buf, line_buf_size);
+
+		/* Each line is a worker job or dispatcher job, lets run them. */
+		exe_job(line_args, args_line_num, num_threads, num_counters,
+			log_enable, files_arr, theards_arr);
+
 		/* Get the next line */
 		line_size = getline(&line_buf, &line_buf_size, cmd_file);
 	}
