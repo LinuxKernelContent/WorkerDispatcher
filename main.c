@@ -187,12 +187,31 @@ int exe_dispatcher_job(char *line_args[MAX_LINE_SIZE], int args_line_num, int nu
 }
 
 /*
+ * This function get free worker to user from arr.
+ */
+int get_free_worker(pthread_t *free_worker, pthread_t *theards_arr, int num_threads)
+{
+	int i;
+
+    for (i = 0; i < num_threads; i++) {
+        if (is_sleep(theards_arr[i])) {
+            return 2;
+        }
+        printf("Thread %d has finished execution\n", i);
+    }
+
+	return 0;
+
+}
+
+/*
  * This function decide if job is dispatcher or worker job.
  */
 int exe_job(char *line_args[MAX_LINE_SIZE], int args_line_num, int num_threads,
 	int num_counters, int log_enable, FILE **files_arr, pthread_t *theards_arr,
-	pthread_mutex_t *file_mutex_arr, pthread_mutex_t worker_mutex_arr)
+	pthread_mutex_t *file_mutex_arr, pthread_mutex_t worker_mutex_arr, bool *is_worker_busy)
 {
+	pthread_t *free_worker;
 
 	/* If line is empty continue */
 	if (!args_line_num)
@@ -205,10 +224,14 @@ int exe_job(char *line_args[MAX_LINE_SIZE], int args_line_num, int num_threads,
 		 * Do we need to implement fifo?
 		 * choose worker
 		 */
-		get_free_worker()
+
+		/* get free worker */
+		/*get_free_worker(free_worker, theards_arr, num_threads);
+
 		worker_murtex_lock(get_free_worker());
 		consume();
-		worker_murtex_lock(get_free_worker());
+		worker_murtex_lock(get_free_worker());*/
+
 		exe_worker_job(line_args, args_line_num, num_threads, num_counters,
 			log_enable, files_arr, theards_arr);
 	} else {
@@ -260,9 +283,15 @@ int main(int argc, char **argv)
 	/* mutex for each file */
 	pthread_mutex_t file_mutex_arr[MAX_NUM_COUNTERS];
 	/* Each thread is a worker */
-	pthread_t theards_arr[MAX_NUM_THREADS];  
-	/* mutex for each worker thread */
-	pthread_mutex_t worker_mutex_arr[MAX_NUM_THREADS];  
+	pthread_t theards_arr[MAX_NUM_THREADS];
+	/* Each theard is a worker ,busy -> true, free -> false */
+	bool is_worker_busy[MAX_NUM_THREADS] = {0};
+	
+	/*
+	 * mutex for each worker thread 
+	 * is it really needed?
+	 * /
+	// pthread_mutex_t worker_mutex_arr[MAX_NUM_THREADS];  
 
 	/* Check user args */
 	ret = validate_args(num_threads, num_counters, log_enable);
@@ -298,7 +327,7 @@ int main(int argc, char **argv)
 		/* choose the worker and lock ->spin lock */
 		/* Each line is a worker job or dispatcher job, lets run them. */
 		exe_job(line_args, args_line_num, num_threads, num_counters,
-			log_enable, files_arr, theards_arr, file_mutex_arr, worker_mutex_arr);
+			log_enable, files_arr, theards_arr, file_mutex_arr, worker_mutex_arr, is_worker_busy);
 		/* unlock the worker */
 		/* Get the next line */
 		line_size = getline(&line_buf, &line_buf_size, cmd_file);
