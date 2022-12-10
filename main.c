@@ -190,8 +190,10 @@ int exe_dispatcher_job(char *line_args[MAX_LINE_SIZE], int args_line_num, int nu
  * This function decide if job is dispatcher or worker job.
  */
 int exe_job(char *line_args[MAX_LINE_SIZE], int args_line_num, int num_threads,
-	int num_counters, int log_enable, FILE **files_arr, pthread_t *theards_arr)
+	int num_counters, int log_enable, FILE **files_arr, pthread_t *theards_arr,
+	pthread_mutex_t *file_mutex_arr, pthread_mutex_t worker_mutex_arr)
 {
+
 	/* If line is empty continue */
 	if (!args_line_num)
 		return 0;
@@ -203,11 +205,44 @@ int exe_job(char *line_args[MAX_LINE_SIZE], int args_line_num, int num_threads,
 		 * Do we need to implement fifo?
 		 * choose worker
 		 */
+		get_free_worker()
+		worker_murtex_lock(get_free_worker());
+		consume();
+		worker_murtex_lock(get_free_worker());
 		exe_worker_job(line_args, args_line_num, num_threads, num_counters,
 			log_enable, files_arr, theards_arr);
 	} else {
 		exe_dispatcher_job(line_args, args_line_num, num_threads, num_counters,
 			log_enable, files_arr, theards_arr);
+	}
+
+	return 0;
+}
+
+int init_file_mutex_arr(pthread_mutex_t *file_mutex_arr, int num_counters)
+{
+	int i;
+
+	for (i = 0; i < num_counters; i++) {
+		if (pthread_mutex_init(&file_mutex_arr[i], NULL) != 0) {
+			printf("mutex init has failed\n");
+			return 1;
+    	}
+	}
+
+	return 0;
+}
+
+int init_worker_mutex_arr(pthread_mutex_t *worker_mutex_arr, int num_threads)
+{
+	int i;
+
+	for (i = 0; i < num_threads; i++) {
+		if (pthread_mutex_init(&worker_mutex_arr[i], NULL) != 0) {
+			printf("mutex init has failed\n");
+			return 1;
+    	} else
+			printf("mutex init!\n");
 	}
 
 	return 0;
@@ -219,8 +254,15 @@ int main(int argc, char **argv)
    		log_enable = atoi(argv[4]), ret, line_count, line_size,
 		line_buf_size = MAX_LINE_SIZE, args_line_num;
 	char *line_args[MAX_LINE_SIZE], *line_buf = NULL;
+	
+	/* Resorces are files with counter inside */
 	FILE **files_arr = malloc(sizeof(FILE*) * (MAX_NUM_COUNTERS - 1));
-	pthread_t theards_arr[MAX_NUM_THREADS];    
+	/* mutex for each file */
+	pthread_mutex_t file_mutex_arr[MAX_NUM_COUNTERS];
+	/* Each thread is a worker */
+	pthread_t theards_arr[MAX_NUM_THREADS];  
+	/* mutex for each worker thread */
+	pthread_mutex_t worker_mutex_arr[MAX_NUM_THREADS];  
 
 	/* Check user args */
 	ret = validate_args(num_threads, num_counters, log_enable);
@@ -232,6 +274,8 @@ int main(int argc, char **argv)
 	/* Init files & pthreads arrays */
 	init_file_arr(files_arr, num_counters);
 	init_pthread_arr(theards_arr, num_threads);
+	init_file_mutex_arr(file_mutex_arr, num_counters);
+	init_worker_mutex_arr(worker_mutex_arr, num_threads);
 
 	FILE *cmd_file = fopen(argv[1], "r");
 	if (!cmd_file) {
@@ -254,12 +298,12 @@ int main(int argc, char **argv)
 		/* choose the worker and lock ->spin lock */
 		/* Each line is a worker job or dispatcher job, lets run them. */
 		exe_job(line_args, args_line_num, num_threads, num_counters,
-			log_enable, files_arr, theards_arr);
+			log_enable, files_arr, theards_arr, file_mutex_arr, worker_mutex_arr);
 		/* unlock the worker */
 		/* Get the next line */
 		line_size = getline(&line_buf, &line_buf_size, cmd_file);
 	}
-
+	/* add mutex destroy to both arrays */
 	free(line_buf);
     fclose(cmd_file);
 	finish_pthread_exe(theards_arr, num_threads);
