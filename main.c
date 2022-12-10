@@ -8,7 +8,7 @@
 #define MAX_NUM_THREADS		4096
 #define MAX_NUM_COUNTERS	100
 #define MAX_COUNTER_NAME	10
-#define MAX_LINE_SIZE		256
+#define MAX_LINE_SIZE		1024
 
 /*
  * This function check that args fron user in they limit.
@@ -134,12 +134,25 @@ void remove_new_line_char(char *string)
 }
 
 /*
- * This function exe worker job.
+ * This function exe worker job, walking for all the commands of worker.
  */
 int exe_worker_job(char *line_args[MAX_LINE_SIZE], int args_line_num, int num_threads,
 	int num_counters, int log_enable, FILE **files_arr, pthread_t *theards_arr)
 {
-	/*exe worker job due to line_arv[1] == "worker" */
+	int i;
+	float sleep_time_mili_sec;
+ 
+	/* start from 1 due to "worker" is in index 0 */
+	for (i = 1; i < args_line_num; i++) {
+		if (strncmp(line_args[i], "msleep", strlen("msleep")) == 0) {
+			sleep_time_mili_sec = atoi(&line_args[i][7]) / 1000.0000;
+			sleep(sleep_time_mili_sec);
+	} else if (strncmp(line_args[i], "increment", strlen("increment")) == 0) {
+			/* increment function with protection */
+	} else if (strncmp(line_args[i], "decrement", strlen("decrement")) == 0) {
+			/* decrement function with protection */
+	}
+	}
 }
 
 /*
@@ -160,11 +173,11 @@ int exe_dispatcher_job(char *line_args[MAX_LINE_SIZE], int args_line_num, int nu
 	if (strcmp(line_args[0], "dispatcher_wait") == 0) {
 		wait_pending_jobs(theards_arr, num_threads);
 	} else if (strncmp(line_args[0], "dispatcher_msleep", strlen("dispatcher_msleep")) == 0) {
-		msleep_val = char_to_int(line_args[0][18]);
+		msleep_val =  atoi(&line_args[0][18]);
 		if (!line_args[0][18]) {
 			fprintf(stdout, "args missing...\n");
 		} else {
-			msleep_val = char_to_int(line_args[0][18]);
+			msleep_val =  atoi(&line_args[0][18]);
 			sleep(msleep_val);
 		}
 	}
@@ -214,7 +227,6 @@ int main(int argc, char **argv)
 	init_pthread_arr(theards_arr, num_threads);
 
 	/*
-	 * implement sidpatcher commands
 	 * implement parsing job string by strtok(";")
 	 * for worker run allover the commands
 	 * else(dispatcher) run on lines
@@ -242,10 +254,11 @@ int main(int argc, char **argv)
 		remove_new_line_char(line_buf);
 		args_line_num = parse_line_args(line_args, line_buf, line_buf_size);
 
+		/* choose the worker and lock ->spin lock */
 		/* Each line is a worker job or dispatcher job, lets run them. */
 		exe_job(line_args, args_line_num, num_threads, num_counters,
 			log_enable, files_arr, theards_arr);
-
+		/* unlock the worker */
 		/* Get the next line */
 		line_size = getline(&line_buf, &line_buf_size, cmd_file);
 	}
