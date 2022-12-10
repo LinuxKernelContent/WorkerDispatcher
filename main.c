@@ -162,6 +162,7 @@ int char_to_int(char c)
 {
 	return c - '0';
 }
+
 /*
  * This function exe dispatcher job.
  */
@@ -196,6 +197,12 @@ int exe_job(char *line_args[MAX_LINE_SIZE], int args_line_num, int num_threads,
 		return 0;
 	
 	if (strcmp(line_args[0], "worker") == 0) {
+		/*
+		 * if its worker commands need to choose worker and protect
+		 * 	file with mutex.
+		 * Do we need to implement fifo?
+		 * choose worker
+		 */
 		exe_worker_job(line_args, args_line_num, num_threads, num_counters,
 			log_enable, files_arr, theards_arr);
 	} else {
@@ -226,15 +233,6 @@ int main(int argc, char **argv)
 	init_file_arr(files_arr, num_counters);
 	init_pthread_arr(theards_arr, num_threads);
 
-	/*
-	 * implement parsing job string by strtok(";")
-	 * for worker run allover the commands
-	 * else(dispatcher) run on lines
-	 * if its worker commands need to choose worker and protect
-	 * 	file with mutex.
-	 * Do we need to implement fifo?
-	 */
-
 	FILE *cmd_file = fopen(argv[1], "r");
 	if (!cmd_file) {
 		fprintf(stderr, "Error opening file '%s'\n", argv[1]);
@@ -245,8 +243,7 @@ int main(int argc, char **argv)
 	line_size = getline(&line_buf, &line_buf, cmd_file);
 
 	/* Loop through until we are done with the file. */
-	while (line_size >= 0)
-	{
+	while (line_size >= 0) {
 		/* Increment our line count */
 		line_count++;
 	
@@ -262,7 +259,6 @@ int main(int argc, char **argv)
 		/* Get the next line */
 		line_size = getline(&line_buf, &line_buf_size, cmd_file);
 	}
-
 
 	free(line_buf);
     fclose(cmd_file);
