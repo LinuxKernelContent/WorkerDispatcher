@@ -11,6 +11,55 @@
 #define MAX_LINE_SIZE		1024
 
 /*
+ * This job struct holds the worker commands.
+ */
+typedef struct job {
+	char *worker_cmd[MAX_LINE_SIZE];
+	int num_cmd;
+} job_t;
+
+/*
+ * This is the share Q for threads.
+ */
+job_t job_queue[256];
+int job_count = 0;
+
+pthread_mutex_t mutex_queue;
+pthread_cond_t cond_queue;
+
+void execute_job(job_t* job) {
+}
+
+void submit_job(job_t job) {
+	pthread_mutex_lock(&mutex_queue);
+	job_queue[job_count] = job;
+	job_count++;
+	pthread_mutex_unlock(&mutex_queue);
+	pthread_cond_signal(&cond_queue);
+}
+
+void* start_thread(void* args) {
+	while (1) {
+		job_t job;
+
+		pthread_mutex_lock(&mutex_queue);
+		while (job_count == 0) {
+			pthread_cond_wait(&cond_queue, &mutex_queue);
+		}
+
+		job = job_queue[0];
+		int i;
+		for (i = 0; i < job_count - 1; i++) {
+			job_queue[i] = job_queue[i + 1];
+		}
+		job_count--;
+		pthread_mutex_unlock(&mutex_queue);
+		execute_job(&job);
+	}
+}
+
+
+/*
  * This function check that args fron user in they limit.
  */
 int validate_args(int num_threads, int num_counters, int log_enable)
@@ -87,12 +136,12 @@ int finish_pthread_exe(pthread_t *theards_arr, int num_threads)
 {
 	int i;
 
-    for (i = 0; i < num_threads; i++) {
-        if (pthread_cancel(theards_arr[i]) != 0) {
-            return 2;
-        }
-        printf("Thread %d has finished execution\n", i);
-    }
+	for (i = 0; i < num_threads; i++) {
+		if (pthread_cancel(theards_arr[i]) != 0) {
+			return 2;
+		}
+		printf("Thread %d has finished execution\n", i);
+	}
 
 	return 0;
 }
@@ -187,29 +236,11 @@ int exe_dispatcher_job(char *line_args[MAX_LINE_SIZE], int args_line_num, int nu
 }
 
 /*
- * This function get free worker to user from arr.
- */
-int get_free_worker(pthread_t *free_worker, pthread_t *theards_arr, int num_threads)
-{
-	int i;
-
-    for (i = 0; i < num_threads; i++) {
-        if (is_sleep(theards_arr[i])) {
-            return 2;
-        }
-        printf("Thread %d has finished execution\n", i);
-    }
-
-	return 0;
-
-}
-
-/*
  * This function decide if job is dispatcher or worker job.
  */
 int exe_job(char *line_args[MAX_LINE_SIZE], int args_line_num, int num_threads,
 	int num_counters, int log_enable, FILE **files_arr, pthread_t *theards_arr,
-	pthread_mutex_t *file_mutex_arr, pthread_mutex_t worker_mutex_arr, bool *is_worker_busy)
+	pthread_mutex_t *file_mutex_arr, bool *is_worker_busy)
 {
 	pthread_t *free_worker;
 
@@ -231,7 +262,7 @@ int exe_job(char *line_args[MAX_LINE_SIZE], int args_line_num, int num_threads,
 		worker_murtex_lock(get_free_worker());
 		consume();
 		worker_murtex_lock(get_free_worker());*/
-
+		/* memcpy from line args to job struct */
 		exe_worker_job(line_args, args_line_num, num_threads, num_counters,
 			log_enable, files_arr, theards_arr);
 	} else {
@@ -250,7 +281,7 @@ int init_file_mutex_arr(pthread_mutex_t *file_mutex_arr, int num_counters)
 		if (pthread_mutex_init(&file_mutex_arr[i], NULL) != 0) {
 			printf("mutex init has failed\n");
 			return 1;
-    	}
+		}
 	}
 
 	return 0;
@@ -264,7 +295,7 @@ int init_worker_mutex_arr(pthread_mutex_t *worker_mutex_arr, int num_threads)
 		if (pthread_mutex_init(&worker_mutex_arr[i], NULL) != 0) {
 			printf("mutex init has failed\n");
 			return 1;
-    	} else
+		} else
 			printf("mutex init!\n");
 	}
 
@@ -304,7 +335,6 @@ int main(int argc, char **argv)
 	init_file_arr(files_arr, num_counters);
 	init_pthread_arr(theards_arr, num_threads);
 	init_file_mutex_arr(file_mutex_arr, num_counters);
-	init_worker_mutex_arr(worker_mutex_arr, num_threads);
 
 	FILE *cmd_file = fopen(argv[1], "r");
 	if (!cmd_file) {
@@ -327,14 +357,14 @@ int main(int argc, char **argv)
 		/* choose the worker and lock ->spin lock */
 		/* Each line is a worker job or dispatcher job, lets run them. */
 		exe_job(line_args, args_line_num, num_threads, num_counters,
-			log_enable, files_arr, theards_arr, file_mutex_arr, worker_mutex_arr, is_worker_busy);
+			log_enable, files_arr, theards_arr, file_mutex_arr, is_worker_busy);
 		/* unlock the worker */
 		/* Get the next line */
 		line_size = getline(&line_buf, &line_buf_size, cmd_file);
 	}
 	/* add mutex destroy to both arrays */
 	free(line_buf);
-    fclose(cmd_file);
+	fclose(cmd_file);
 	finish_pthread_exe(theards_arr, num_threads);
 	close_files_arr(files_arr, num_counters);
 	free(files_arr);
