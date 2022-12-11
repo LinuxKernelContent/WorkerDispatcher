@@ -16,6 +16,11 @@
 typedef struct job {
 	char *worker_cmd[MAX_LINE_SIZE];
 	int num_cmd;
+	int num_threads;
+	int num_counters;
+	int log_enable;
+	FILE **files_arr;
+	pthread_mutex_t file_mutex_arr[MAX_NUM_COUNTERS];
 } job_t;
 
 /*
@@ -28,6 +33,26 @@ pthread_mutex_t mutex_queue;
 pthread_cond_t cond_queue;
 
 void execute_job(job_t* job) {
+	int i, sleep_time_mili_sec, file_number;
+
+	for (i = 0; i < job->num_cmd; i++) {
+		if (strncmp(line_args[i], "msleep", strlen("msleep")) == 0) {
+			sleep_time_mili_sec = atoi(&line_args[i][7]) / 1000.0000;
+			sleep(sleep_time_mili_sec);
+		} else if (strncmp(line_args[i], "increment", strlen("increment")) == 0) {
+			/* increment function with protection */
+			file_number = = atoi(&line_args[i][10]);
+			pthread_mutex_lock(&job->file_mutex_arr[file_number]);
+			/*increament*/
+			pthread_mutex_unlock(&job->file_mutex_arr[file_number]);
+		} else if (strncmp(line_args[i], "decrement", strlen("decrement")) == 0) {
+			/* decrement function with protection */
+			file_number = = atoi(&line_args[i][10]);
+			pthread_mutex_lock(&job->file_mutex_arr[file_number]);
+			/*decreament*/
+			pthread_mutex_unlock(&job->file_mutex_arr[file_number]);
+		}
+	}
 }
 
 void submit_job(job_t job) {
@@ -57,7 +82,6 @@ void* start_thread(void* args) {
 		execute_job(&job);
 	}
 }
-
 
 /*
  * This function check that args fron user in they limit.
@@ -304,6 +328,7 @@ int init_worker_mutex_arr(pthread_mutex_t *worker_mutex_arr, int num_threads)
 
 int main(int argc, char **argv)
 {
+	job_t current_job;
    int num_threads = atoi(argv[2]), num_counters = atoi(argv[3]),
    		log_enable = atoi(argv[4]), ret, line_count, line_size,
 		line_buf_size = MAX_LINE_SIZE, args_line_num;
@@ -315,14 +340,6 @@ int main(int argc, char **argv)
 	pthread_mutex_t file_mutex_arr[MAX_NUM_COUNTERS];
 	/* Each thread is a worker */
 	pthread_t theards_arr[MAX_NUM_THREADS];
-	/* Each theard is a worker ,busy -> true, free -> false */
-	bool is_worker_busy[MAX_NUM_THREADS] = {0};
-	
-	/*
-	 * mutex for each worker thread 
-	 * is it really needed?
-	 * /
-	// pthread_mutex_t worker_mutex_arr[MAX_NUM_THREADS];  
 
 	/* Check user args */
 	ret = validate_args(num_threads, num_counters, log_enable);
@@ -354,15 +371,21 @@ int main(int argc, char **argv)
 		remove_new_line_char(line_buf);
 		args_line_num = parse_line_args(line_args, line_buf, line_buf_size);
 
-		/* choose the worker and lock ->spin lock */
-		/* Each line is a worker job or dispatcher job, lets run them. */
-		exe_job(line_args, args_line_num, num_threads, num_counters,
-			log_enable, files_arr, theards_arr, file_mutex_arr, is_worker_busy);
-		/* unlock the worker */
+		/* create job */
+		current_job.worker_cmd = line_args;
+		current_job.num_cmd = args_line_num;
+		current_job.files_arr = files_arr;
+		current_job.file_mutex_arr = file_mutex_arr;
+
+		/* Submit job*/
+		submit_job(current_job);
 		/* Get the next line */
 		line_size = getline(&line_buf, &line_buf_size, cmd_file);
 	}
+
 	/* add mutex destroy to both arrays */
+	pthread_mutex_destroy(&mutex_queue);
+    pthread_cond_destroy(&cond_queue);
 	free(line_buf);
 	fclose(cmd_file);
 	finish_pthread_exe(theards_arr, num_threads);
