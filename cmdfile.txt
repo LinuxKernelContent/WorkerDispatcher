@@ -1,9 +1,5 @@
-msleep 1;increment;decrement;decrement;msleep
-msleep 1;increment;decrement;decrement;msleep
-worker;msleep 17;increment;decrement;decrement;msleep
-worker;msleep 17;increment;decrement;decrement;msleep
-worker;msleep 117;increment;decrement;decrement;msleep
-msleep 1;increment;decrement;decrement;msleep
-msleep 1;increment;decrement;decrement;msleep
-worker;msleep 1117;increment;decrement;decrement;msleep
-worker;msleep 1;increment;decrement;decrement;msleep
+worker;repeat 6;msleep 1000;increment 3;decrement 2 ;decrement 5 ;msleep 100
+worker;msleep 500;
+worker;repeat 7;msleep 1000;increment 1 ;decrement 2;decrement 3;msleep 100
+worker;msleep 500;
+worker;msleep 1000;increment 7;decrement 6;decrement 4;msleep 100
