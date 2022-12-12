@@ -1,2 +1,9 @@
-
+msleep 1;increment;decrement;decrement;msleep
+msleep 1;increment;decrement;decrement;msleep
+worker;msleep 17;increment;decrement;decrement;msleep
+worker;msleep 17;increment;decrement;decrement;msleep
+worker;msleep 117;increment;decrement;decrement;msleep
+msleep 1;increment;decrement;decrement;msleep
+msleep 1;increment;decrement;decrement;msleep
 worker;msleep 1117;increment;decrement;decrement;msleep
+worker;msleep 1;increment;decrement;decrement;msleep
