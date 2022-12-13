@@ -19,7 +19,8 @@ typedef struct job_data {
     int num_threads;
     int num_counters;
     int log_enable;
-    FILE *files_arr[MAX_NUM_COUNTERS];
+    char files_arr[MAX_NUM_COUNTERS][MAX_COUNTER_FILE_NAME];
+
     pthread_mutex_t file_mutex_arr[MAX_NUM_COUNTERS];
     pthread_t theards_arr[MAX_NUM_THREADS];
 } data_t;
@@ -58,9 +59,12 @@ int char_to_int(char c) { return c - '0'; }
 
 void execute_worker_job(job_t *job)
 {
+    printf("worker will do: \n");
     int i = 1, ms_sleep_val, file_number;
     int repeat_value = 1;
-
+    for(int jobidx = 0; jobidx < job->num_of_commands_to_execute; jobidx++) 
+        printf("%s\n", job->commands_to_execute[jobidx]);
+    printf("all of ^^^ \n");
     if(strncmp(job->commands_to_execute[1], "repeat", strlen("repeat")) == 0) {
         repeat_value = atoi(job->commands_to_execute[1] + strlen("repeat"));
         /* if the command starts with repeat - start executing from the next command*/
@@ -88,9 +92,17 @@ void execute_worker_job(job_t *job)
                 
                 /*increament*/
                 long long int cur_num;
-                fscanf(job_data.files_arr[file_number], "%lld", &cur_num);
+
+                FILE *fp = fopen(job_data.files_arr[file_number], "r");
+                fscanf(fp, "%lld", &cur_num);
+                fclose(fp);
+
+
+                fp = fopen(job_data.files_arr[file_number], "w+");
                 cur_num++;
-                fprintf(job_data.files_arr[file_number], "%lld", cur_num);
+                fprintf(fp, "%lld", cur_num);
+                
+                fclose(fp);
 
                 pthread_mutex_unlock(& (job_data.file_mutex_arr[file_number]) );
 
@@ -106,11 +118,16 @@ void execute_worker_job(job_t *job)
                 
                 /*decrement*/
                 long long int cur_num;
+                FILE *fp = fopen(job_data.files_arr[file_number], "r");
+                
+                fscanf(fp, "%lld", &cur_num);
+                fclose(fp);
 
-                fscanf(job_data.files_arr[file_number], "%lld", &cur_num);
+                fp = fopen(job_data.files_arr[file_number], "w+");
                 cur_num--;
-                fprintf(job_data.files_arr[file_number], "%lld", cur_num);
-
+                fprintf(fp, "%lld", cur_num);
+                
+                fclose(fp);
 
                 pthread_mutex_unlock(& (job_data.file_mutex_arr[file_number]) );
 
@@ -119,6 +136,9 @@ void execute_worker_job(job_t *job)
     }
 }
 
+
+
+/* insert a job to the queue*/
 void submit_job(job_t *job)
 {
     pthread_mutex_lock(&mutex_queue);
@@ -158,7 +178,7 @@ void *worker_start_thread()
 }
 
 /*
- * This function check that args fron user in they limit.
+ * This function validates user input.
  */
 bool validate_args(int argc, char **argv)
 {
@@ -169,7 +189,6 @@ bool validate_args(int argc, char **argv)
 
 	job_data.num_threads = atoi(argv[2]);
     job_data.num_counters = atoi(argv[3]);
-
     job_data.log_enable = atoi(argv[4]);
 
     if (job_data.num_threads > MAX_NUM_THREADS || job_data.num_counters > MAX_NUM_COUNTERS ||
@@ -192,26 +211,19 @@ int create_file_array(void)
 
         sprintf(file_name_buffer, "counter%.2d", i); // create name
      
-        job_data.files_arr[i] = fopen(file_name_buffer, "w+"); // create file and store into files_arr
+        strcpy(job_data.files_arr[i], file_name_buffer); // store the name
 
-        fprintf(job_data.files_arr[i], "%d", 0); // write 0 to file
+        FILE* fp = fopen(job_data.files_arr[i], "w+");
+        fprintf(fp, "0"); // write 0 to file
+        fclose(fp);
     }
 
     return 0;
 }
 
-/*
- * This function close counter files.
- */
-void close_files_arr()
-{
-    int i;
-    for (i = 0; i < job_data.num_counters; i++)
-        fclose(job_data.files_arr[i]);
-}
 
 /*
- * This function create the pthreads -> workers.
+ * This function creates the worker threads.
  */
 int init_pthread_arr()
 {
@@ -288,7 +300,10 @@ void execute_dispatcher_job(job_t *job)
 
     else if (strncmp(job->commands_to_execute[0], "dispatcher_msleep", strlen("dispatcher_msleep")) == 0) {
         msleep_val = atoi(job->commands_to_execute[0] + strlen("dispatcher_msleep") );  
+
         usleep(msleep_val * 1000);
+        printf("dispatcher sleep done\n");
+        
     }
 
 }
@@ -303,12 +318,9 @@ int execute_job(job_t *job)
     if (job->num_of_commands_to_execute == 0)
         return 0;
 
-
     if (strcmp(job->commands_to_execute[0], "worker") == 0) {
-        /* Submit job to worker*/
-        // submit_job(job);
-        execute_worker_job(job);
-    
+        /* Submit job to worker queue*/
+        submit_job(job);
     } 
     
     else {
@@ -378,11 +390,10 @@ int main(int argc, char **argv)
     printf("\n\n");
     /* Loop through until we are done with the file. */
     while ((line_size = getline(&line_buf, &line_buffer_size, cmd_file))  != EOF) {
-
+        printf("Job to do: %s\n", line_buf);
         createJob(&current_job, line_buf);
         
         execute_job(&current_job);
-        printf("\n");
     }
 
     printf("\n\n");    
@@ -392,6 +403,6 @@ int main(int argc, char **argv)
     pthread_mutex_destroy(&mutex_queue);
     free(line_buf);
     fclose(cmd_file);
-    close_files_arr();
+    // close_files_arr();
     return 0;
 }

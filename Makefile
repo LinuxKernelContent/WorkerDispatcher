@@ -13,8 +13,11 @@ clean:
 
 .PHONY : testmem
 testmem:
-	valgrind --quiet --leak-check=yes ./main cmdfile.txt 10 10 1
-	valgrind --quiet --leak-check=yes ./main cmdfile.txt 5 5 1
+	valgrind --leak-check=full --show-leak-kinds=all --track-origins=yes --verbose ./main cmdfile.txt 10 10 1
+	valgrind --leak-check=full --show-leak-kinds=all --track-origins=yes --verbose ./main cmdfile.txt 5 5 1
 
 tidycode:
 	clang-format -i *.c
+
+run :
+	./main cmdfile.txt 10 10 1
