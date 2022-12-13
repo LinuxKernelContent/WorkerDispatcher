@@ -4,6 +4,8 @@
 #include <stdlib.h>
 #include <string.h>
 #include <unistd.h>
+#include <sys/syscall.h>
+
 
 #define MAX_NUM_THREADS 4096
 #define MAX_NUM_COUNTERS 100
@@ -42,6 +44,7 @@ data_t job_data;
 job_t *job_queue[256];
 int job_queue_size = 0;
 
+pthread_mutex_t printmutex;
 pthread_mutex_t mutex_queue;
 pthread_cond_t cond_queue;
 
@@ -59,12 +62,10 @@ int char_to_int(char c) { return c - '0'; }
 
 void execute_worker_job(job_t *job)
 {
-    printf("worker will do: \n");
     int i = 1, ms_sleep_val, file_number;
     int repeat_value = 1;
-    for(int jobidx = 0; jobidx < job->num_of_commands_to_execute; jobidx++) 
-        printf("%s\n", job->commands_to_execute[jobidx]);
-    printf("all of ^^^ \n");
+
+
     if(strncmp(job->commands_to_execute[1], "repeat", strlen("repeat")) == 0) {
         repeat_value = atoi(job->commands_to_execute[1] + strlen("repeat"));
         /* if the command starts with repeat - start executing from the next command*/
@@ -139,11 +140,16 @@ void execute_worker_job(job_t *job)
 
 
 /* insert a job to the queue*/
-void submit_job(job_t *job)
+void submit_job(job_t **job)
 {
     pthread_mutex_lock(&mutex_queue);
+    
+    printf("inserting job with pointer = %p\n", *job);
+    
     job_queue[job_queue_size] = job;
+
     job_queue_size++;
+
     pthread_mutex_unlock(&mutex_queue);
     pthread_cond_signal(&cond_queue);
 }
@@ -163,12 +169,17 @@ void *worker_start_thread()
         }
 
         job = job_queue[0];
+        printf("worker took job with pointer = %p\n", job);
         
         int i;
         for (i = 0; i < job_queue_size - 1; i++) {
-            job_queue[i] = job_queue[i + 1];
+            job_queue[i] = job_queue[i+1];
         }
+
         job_queue_size--;
+
+
+
 
         pthread_mutex_unlock(&mutex_queue);
 
@@ -215,6 +226,7 @@ int create_file_array(void)
 
         FILE* fp = fopen(job_data.files_arr[i], "w+");
         fprintf(fp, "0"); // write 0 to file
+
         fclose(fp);
     }
 
@@ -267,8 +279,10 @@ void wait_pending_jobs()
 /*
  * This function parse the line buf-> array of str(=="argv").
  */
-void createJob(job_t *job, char *line)
-{
+job_t *createJob(char *line)
+{       
+    job_t *job  = (job_t*)malloc(sizeof(job_t));
+
     int num_of_commands= 0;
 	remove_new_line_char(line);
 
@@ -281,6 +295,8 @@ void createJob(job_t *job, char *line)
         job->commands_to_execute[++num_of_commands] = strtok(NULL, ";");
     }
     job->num_of_commands_to_execute = num_of_commands;
+
+    return job;
 }
 
 
@@ -289,17 +305,17 @@ void createJob(job_t *job, char *line)
 /*
  * This function exe dispatcher job.
  */
-void execute_dispatcher_job(job_t *job)
+void execute_dispatcher_job(job_t **job)
 {
     int msleep_val;
 
-    if (strcmp(job->commands_to_execute[0] , "dispatcher_wait") == 0) {
+    if (strcmp((*job)->commands_to_execute[0] , "dispatcher_wait") == 0) {
         /* possibly we should wait untill queue is emptyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyy*/
         wait_pending_jobs(job_data);
     } 
 
-    else if (strncmp(job->commands_to_execute[0], "dispatcher_msleep", strlen("dispatcher_msleep")) == 0) {
-        msleep_val = atoi(job->commands_to_execute[0] + strlen("dispatcher_msleep") );  
+    else if (strncmp((*job)->commands_to_execute[0], "dispatcher_msleep", strlen("dispatcher_msleep")) == 0) {
+        msleep_val = atoi((*job)->commands_to_execute[0] + strlen("dispatcher_msleep") );  
 
         usleep(msleep_val * 1000);
         printf("dispatcher sleep done\n");
@@ -311,14 +327,14 @@ void execute_dispatcher_job(job_t *job)
 /*
  * This function decide if job is dispatcher or worker job.
  */
-int execute_job(job_t *job)
+int execute_job(job_t **job)
 {
 
     /* If line is empty continue */
-    if (job->num_of_commands_to_execute == 0)
+    if ((*job)->num_of_commands_to_execute == 0)
         return 0;
 
-    if (strcmp(job->commands_to_execute[0], "worker") == 0) {
+    if (strcmp((*job)->commands_to_execute[0], "worker") == 0) {
         /* Submit job to worker queue*/
         submit_job(job);
     } 
@@ -366,7 +382,7 @@ int main(int argc, char **argv)
 	int valid_args, line_size;
     char *line_buf = NULL;
 	size_t line_buffer_size = 0;
-	job_t current_job;
+	
 
 	/* Check user args */
     valid_args = validate_args(argc, argv);
@@ -387,16 +403,23 @@ int main(int argc, char **argv)
     init_pthread_arr();
     init_file_mutex_arr();
 
-    printf("\n\n");
+    int counter = 0;
     /* Loop through until we are done with the file. */
     while ((line_size = getline(&line_buf, &line_buffer_size, cmd_file))  != EOF) {
-        printf("Job to do: %s\n", line_buf);
-        createJob(&current_job, line_buf);
-        
+
+        job_t *current_job = createJob(line_buf);
+        printf("job number %d with pointer %p\n", counter, current_job);
+        counter++;
+        // /* print job */
+        // for(int cmdidx = 0; cmdidx < current_job->num_of_commands_to_execute; cmdidx++) 
+        //     printf("%s\n", current_job->commands_to_execute[cmdidx]);
+
+
         execute_job(&current_job);
+        printf("\n");
+
     }
 
-    printf("\n\n");    
 
     finish_pthread_exe();
     pthread_cond_destroy(&cond_queue);
@@ -404,5 +427,6 @@ int main(int argc, char **argv)
     free(line_buf);
     fclose(cmd_file);
     // close_files_arr();
+    printf("\n");
     return 0;
 }
