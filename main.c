@@ -5,6 +5,8 @@
 #include <string.h>
 #include <unistd.h>
 #include <sys/syscall.h>
+#include <time.h>
+
 
 #define USER_INPUT_ARGC 5
 #define MAX_NUM_THREADS 4096
@@ -50,6 +52,7 @@ Queue *JobQueue;
 pthread_mutex_t printmutex;
 void printJob(Job *job);
 void freeJob(Job *job);
+void sleep_ms(int ms);
 
 
 long long int readNumFromCounter(int counter_number) {
@@ -62,25 +65,24 @@ long long int readNumFromCounter(int counter_number) {
 
 /* increment the counter <counter_number_to_increment>*/
 void increment(int counter_number) {
-            
-    long long int number_to_increment;
-    number_to_increment = readNumFromCounter(counter_number);
-    number_to_increment++;
+    long long int counter;
+    counter = readNumFromCounter(counter_number);
+    counter++;
 
-    FILE *fp = fopen(program_data->files_arr[number_to_increment], "w+");
-    fprintf(fp, "%lld", number_to_increment);
+    FILE *fp = fopen(program_data->files_arr[counter_number], "w+");
+    fprintf(fp, "%lld", counter);
     fclose(fp);
 
 }
 
 /* decrement the counter <counter_number_to_increment>*/
 void decrement(int counter_number) {
-    long long int number_to_decrement;
-    number_to_decrement = readNumFromCounter(counter_number);
-    number_to_decrement--;
+    long long int counter;
+    counter = readNumFromCounter(counter_number);
+    counter--;
 
     FILE *fp = fopen(program_data->files_arr[counter_number], "w+");
-    fprintf(fp, "%lld", number_to_decrement);
+    fprintf(fp, "%lld", counter);
     fclose(fp);
 
 }
@@ -170,12 +172,13 @@ void execute_worker_job(Job *job)
         i = 2; 
     }
 
-    for(int j = 0; j < repeat_value; j++) {        
+    for(int j = 0; j < repeat_value; j++) {    
+
         for (i = 1; i < job->num_of_commands_to_execute; i++) {
 
             if (strncmp(job->commands_to_execute[i], "msleep", strlen("msleep")) == 0) {
                 ms_sleep_val = atoi(job->commands_to_execute[i] + strlen("msleep"));
-                usleep(ms_sleep_val * 1000);
+                sleep_ms(ms_sleep_val);
             } 
             
             else if (strncmp(job->commands_to_execute[i], "increment", strlen("increment")) == 0) {
@@ -183,7 +186,6 @@ void execute_worker_job(Job *job)
                 file_number = atoi( job->commands_to_execute[i] + strlen("increment") );
                 pthread_mutex_lock( & (program_data->file_mutex_arr[file_number]) );
                 
-                /*increment*/
                 increment(file_number);
                 
                 pthread_mutex_unlock(& (program_data->file_mutex_arr[file_number]) );
@@ -214,9 +216,7 @@ void execute_worker_job(Job *job)
 void submit_job(Job *job)
 {
     pthread_mutex_lock(&(JobQueue->queue_mutex));
-
     Enqueue(job);
-
     pthread_mutex_unlock(&(JobQueue->queue_mutex));
 }
 
@@ -228,7 +228,6 @@ void *worker_start_thread()
     while (true) {
         Job *job;
         
-        // get job
         pthread_mutex_lock(&(JobQueue->queue_mutex));
         
         while (isEmpty()) {
@@ -383,6 +382,7 @@ void execute_dispatcher_job(Job *job)
 
     if (strcmp(job->commands_to_execute[0] , "dispatcher_wait") == 0) {
         printf("Dispatcher waiting untill all jobs are done...\n");
+        while(isEmpty() == false);
 
         printf("all work done, dispatcher waking up..\n");
     } 
@@ -443,6 +443,7 @@ bool init_file_mutex_arr()
 
 int main(int argc, char **argv)
 {
+    clock_t start=clock();
     program_data = (Program_Data*)malloc(sizeof(Program_Data));
     JobQueue = (Queue*)malloc(sizeof(Queue));
     pthread_mutex_init(&(JobQueue->queue_mutex), NULL);
@@ -488,7 +489,6 @@ int main(int argc, char **argv)
         execute_job(current_job);
     }
 
-    sleep(20);
     finish_pthread_exe();
     pthread_cond_destroy(&(JobQueue->queue_not_empty_cond_var));
     pthread_mutex_destroy(&(JobQueue->queue_mutex));
@@ -496,5 +496,7 @@ int main(int argc, char **argv)
     fclose(cmd_file);
     free(JobQueue);
     free(program_data);
+    clock_t end =  clock();
+    printf("Program taken: %lf To complete.\n", (double)(end-start) / CLOCKS_PER_SEC) ;
     return 0;
 }
