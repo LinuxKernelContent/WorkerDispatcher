@@ -1,3 +1,17 @@
-worker;repeat 5;increment 5;decrement 6 ;msleep 1000
+worker;repeat 1;increment 5;decrement 6 ;msleep  500
+worker;repeat 2;increment 5;decrement 6 ;msleep  500
+worker;repeat 3;increment 5;decrement 6 ;msleep  500
+worker;repeat 4;increment 5;decrement 6 ;msleep  500
+worker;repeat 5;increment 5;decrement 6 ;msleep  500
+worker;repeat 6;increment 5;decrement 6 ;msleep  500
+worker;repeat 7;increment 5;decrement 6 ;msleep  500
+worker;repeat 8;increment 5;decrement 6 ;msleep  500
+worker;repeat 9;increment 5;decrement 6 ;msleep  500
+worker;repeat 10;increment 5;decrement 6 ;msleep 500
+worker;repeat 11;increment 5;decrement 6 ;msleep 500
+worker;repeat 12;increment 5;decrement 6 ;msleep 500
+dispatcher_wait;
+
+worker;msleep 100;
 worker;msleep 200;
-dispatcher_msleep 5000;
+worker;msleep 300;
