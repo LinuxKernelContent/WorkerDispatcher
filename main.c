@@ -11,20 +11,21 @@
 #define USER_INPUT_ARGC 5
 #define MAX_NUM_THREADS 4096
 #define MAX_NUM_COUNTERS 100
-#define MAX_COUNTER_FILE_NAME 10
+#define MAX_COUNTER_FILE_NAME 10 // remove it
 #define MAX_LINE_SIZE 1024
-#define MUTEX_INIT_SUCESS 0
-#define DISPATCHER_MSLEEP_STRING_LEN 17
+#define MUTEX_INIT_SUCESS 0 
+#define DISPATCHER_MSLEEP_STRING_LEN 17 // remove it if you can
 
 
 typedef struct program_data {
     int num_threads;
+    int num_of_sleeping_threads;
     int num_counters;
     int log_enable;
     char files_arr[MAX_NUM_COUNTERS][MAX_COUNTER_FILE_NAME];
-
     pthread_mutex_t file_mutex_arr[MAX_NUM_COUNTERS];
     pthread_t theards_arr[MAX_NUM_THREADS];
+
 } Program_Data;
 
 
@@ -41,15 +42,16 @@ typedef struct queue {
     int num_of_pending_jobs;
     pthread_mutex_t queue_mutex;
     pthread_cond_t queue_not_empty_cond_var;
+    pthread_cond_t all_work_done;
+
 
 } Queue;
-
 
 Program_Data *program_data;
 Queue *JobQueue;
 
 
-pthread_mutex_t printmutex;
+pthread_mutex_t printmutex = PTHREAD_MUTEX_INITIALIZER;
 void printJob(Job *job);
 void freeJob(Job *job);
 void sleep_ms(int ms);
@@ -113,7 +115,6 @@ void Enqueue(Job *job) {
         JobQueue->num_of_pending_jobs++;
     }
 
-    pthread_cond_signal(&(JobQueue->queue_not_empty_cond_var));
 
 }
 
@@ -218,6 +219,10 @@ void submit_job(Job *job)
     pthread_mutex_lock(&(JobQueue->queue_mutex));
     Enqueue(job);
     pthread_mutex_unlock(&(JobQueue->queue_mutex));
+
+    pthread_cond_broadcast(&(JobQueue->queue_not_empty_cond_var));
+    // pthread_cond_signal(&(JobQueue->queue_not_empty_cond_var));
+
 }
 
 /*
@@ -232,7 +237,15 @@ void *worker_start_thread()
         
         while (isEmpty()) {
             printf("Queue empty, thread is sleeping...\n");
+            program_data->num_of_sleeping_threads++;
+            
+            if(program_data->num_of_sleeping_threads == program_data->num_threads) {
+                    pthread_cond_signal(&(JobQueue->all_work_done));
+            }
+
             pthread_cond_wait(&(JobQueue->queue_not_empty_cond_var), &(JobQueue->queue_mutex));
+            program_data->num_of_sleeping_threads--;
+
             printf("Thread woke up, queue has jobs to do!\n");
         }
 
@@ -343,6 +356,7 @@ void freeJob(Job *job) {
 }
 
 
+
 Job *createJob(char *line)
 {       
     Job *job  = (Job*)malloc(sizeof(Job));
@@ -382,8 +396,12 @@ void execute_dispatcher_job(Job *job)
 
     if (strcmp(job->commands_to_execute[0] , "dispatcher_wait") == 0) {
         printf("Dispatcher waiting untill all jobs are done...\n");
-        while(isEmpty() == false);
+        
+        pthread_mutex_lock(&(JobQueue->queue_mutex));
 
+        pthread_cond_wait(&(JobQueue->all_work_done), &(JobQueue->queue_mutex));
+        
+        pthread_mutex_unlock(&(JobQueue->queue_mutex));
         printf("all work done, dispatcher waking up..\n");
     } 
 
@@ -444,7 +462,10 @@ bool init_file_mutex_arr()
 int main(int argc, char **argv)
 {
     clock_t start=clock();
+
     program_data = (Program_Data*)malloc(sizeof(Program_Data));
+    program_data->num_of_sleeping_threads = program_data->num_threads;
+
     JobQueue = (Queue*)malloc(sizeof(Queue));
     pthread_mutex_init(&(JobQueue->queue_mutex), NULL);
 
@@ -488,6 +509,8 @@ int main(int argc, char **argv)
         
         execute_job(current_job);
     }
+
+
 
     finish_pthread_exe();
     pthread_cond_destroy(&(JobQueue->queue_not_empty_cond_var));
