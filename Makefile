@@ -8,7 +8,8 @@ main: main.c
 .PHONY : clean
 clean:
 	\rm main 
-	\rm counter*
+	\rm thread*.txt
+	\rm counter*.txt
 
 
 .PHONY : testmem
@@ -19,4 +20,4 @@ tidycode:
 	clang-format -i *.c
 
 run :
-	./main cmdfile.txt 10 10 1
+	./main cmdfile.txt 3 10 1
