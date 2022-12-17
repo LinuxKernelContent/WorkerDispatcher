@@ -55,7 +55,7 @@ pthread_mutex_t printmutex = PTHREAD_MUTEX_INITIALIZER;
 void printJob(Job *job);
 void freeJob(Job *job);
 void sleep_ms(int ms);
-
+void execute_worker_job(Job* job);
 
 long long int readNumFromCounter(int counter_number) {
     long long int cur_num;
@@ -161,6 +161,153 @@ void remove_new_line_char(char *string) { string[strcspn(string, "\n")] = 0; }
 int char_to_int(char c) { return c - '0'; }
 
 
+
+
+/* insert a job to the queue*/
+void submit_job(Job *job)
+{
+    pthread_mutex_lock(&(JobQueue->queue_mutex));
+    Enqueue(job);
+    pthread_mutex_unlock(&(JobQueue->queue_mutex));
+
+    pthread_cond_broadcast(&(JobQueue->queue_not_empty_cond_var));
+
+}
+
+/*
+ * This is the worker function.
+ */
+void *worker_start_thread()
+{
+    while (true) {
+        Job *job;
+        
+        pthread_mutex_lock(&(JobQueue->queue_mutex));
+        
+        while (isEmpty()) {
+            printf("Queue empty, thread is sleeping...\n");
+            
+            program_data->num_of_sleeping_threads++;
+            /* "signal" the main thread that this thread is sleeping.*/
+            if(program_data->num_of_sleeping_threads == program_data->num_threads) {
+                    pthread_cond_signal(&(JobQueue->all_work_done));
+            }
+
+            pthread_cond_wait(&(JobQueue->queue_not_empty_cond_var), &(JobQueue->queue_mutex));
+            program_data->num_of_sleeping_threads--;
+
+            printf("Thread woke up, queue has jobs to do!\n");
+        }
+
+        job = Dequeue();
+
+        pthread_mutex_unlock(&(JobQueue->queue_mutex));
+
+        execute_worker_job(job);
+    }
+}
+
+/*
+ * This function validates user input.
+ */
+bool validate_args(int argc, char **argv)
+{
+
+	if(argc < USER_INPUT_ARGC) {
+		return false;
+	}
+
+	program_data->num_threads = atoi(argv[2]);
+    program_data->num_counters = atoi(argv[3]);
+    program_data->log_enable = atoi(argv[4]);
+
+    if (program_data->num_threads > MAX_NUM_THREADS || program_data->num_counters > MAX_NUM_COUNTERS ||
+        (program_data->log_enable != 0 && program_data->log_enable != 1) ) {
+        return false;
+	}
+
+    return true;
+}
+
+
+
+
+/*
+ * This function cancel the pthreads.
+ */
+int finish_pthread_exe()
+{
+    int i;
+
+    for (i = 0; i < program_data->num_threads; i++) {
+        if (pthread_cancel(program_data->theards_arr[i]) != 0) {
+            return 2;
+        }
+    }
+
+    return 0;
+}
+
+/*
+ * Wait for all pending background commands to complete .
+ */
+void wait_pending_jobs()
+{
+    printf("Dispatcher waiting untill all jobs are done...\n");
+    
+    pthread_mutex_lock(&(JobQueue->queue_mutex));
+
+    pthread_cond_wait(&(JobQueue->all_work_done), &(JobQueue->queue_mutex));
+    
+    pthread_mutex_unlock(&(JobQueue->queue_mutex));
+    printf("all work done, dispatcher waking up..\n");
+}
+
+
+void freeJob(Job *job) {
+    if(job != NULL) {
+        for(int i = 0; i < job->num_of_commands_to_execute; i++) {
+            free(job->commands_to_execute[i]);
+        }
+        
+        free(job);
+    }
+}
+
+
+
+Job *createJob(char *line)
+{       
+    Job *job  = (Job*)malloc(sizeof(Job));
+	
+    remove_new_line_char(line);
+    job->next_job = NULL;
+    int num_of_commands = 0;
+    
+
+    job->commands_to_execute[num_of_commands] = strtok(line, ";");
+
+    while ( (job->commands_to_execute[num_of_commands] != NULL) ) {
+       job->commands_to_execute[++num_of_commands] = strtok(NULL, ";");
+    }
+    job->num_of_commands_to_execute = num_of_commands;
+
+
+    for(int i = 0; i < num_of_commands; i++) {
+        job->commands_to_execute[i] = strdup(job->commands_to_execute[i]);
+    }
+
+    return job;
+}
+
+
+/* sleep for <ms> milliseconds */
+void sleep_ms(int ms) {
+    usleep(ms * 1000);
+    
+}
+
+
 void execute_worker_job(Job *job)
 {
     int i = 1, ms_sleep_val, file_number;
@@ -212,71 +359,80 @@ void execute_worker_job(Job *job)
 }
 
 
-
-/* insert a job to the queue*/
-void submit_job(Job *job)
+void execute_dispatcher_job(Job *job)
 {
-    pthread_mutex_lock(&(JobQueue->queue_mutex));
-    Enqueue(job);
-    pthread_mutex_unlock(&(JobQueue->queue_mutex));
 
-    pthread_cond_broadcast(&(JobQueue->queue_not_empty_cond_var));
-    // pthread_cond_signal(&(JobQueue->queue_not_empty_cond_var));
+    if (strcmp(job->commands_to_execute[0] , "dispatcher_wait") == 0) {
+        wait_pending_jobs();
+    } 
 
+    else if (strncmp(job->commands_to_execute[0], "dispatcher_msleep", strlen("dispatcher_msleep")) == 0) {
+        
+        int sleep_val = atoi(job->commands_to_execute[0] + strlen("dispatcher_msleep") );  
+
+        printf("Dispatcher sleepin' for: %d\n\n", sleep_val );
+
+        sleep_ms(sleep_val);
+
+        printf("Dispatcher done sleeping");
+        
+    }
+
+    freeJob(job);
 }
 
 /*
- * This is the worker function.
+ * This function decide if job is dispatcher or worker job.
  */
-void *worker_start_thread()
+void execute_job(Job *job)
 {
-    while (true) {
-        Job *job;
-        
-        pthread_mutex_lock(&(JobQueue->queue_mutex));
-        
-        while (isEmpty()) {
-            printf("Queue empty, thread is sleeping...\n");
-            program_data->num_of_sleeping_threads++;
-            
-            if(program_data->num_of_sleeping_threads == program_data->num_threads) {
-                    pthread_cond_signal(&(JobQueue->all_work_done));
-            }
 
-            pthread_cond_wait(&(JobQueue->queue_not_empty_cond_var), &(JobQueue->queue_mutex));
-            program_data->num_of_sleeping_threads--;
+    /* If line is empty continue */
+    if (job->num_of_commands_to_execute != 0) {
 
-            printf("Thread woke up, queue has jobs to do!\n");
+        if (strcmp(job->commands_to_execute[0], "worker") == 0) {
+            /* Submit job to worker queue*/
+            submit_job(job);
+        } 
+        
+        else {
+            /* submit job to dispatcher */
+            execute_dispatcher_job(job);
         }
-
-        job = Dequeue();
-
-        pthread_mutex_unlock(&(JobQueue->queue_mutex));
-        // execute job
-        execute_worker_job(job);
     }
 }
 
-/*
- * This function validates user input.
- */
-bool validate_args(int argc, char **argv)
+
+bool init_file_mutex_arr()
 {
+    int i;
+    for (i = 0; i < program_data->num_counters; i++) {
 
-	if(argc < USER_INPUT_ARGC) {
-		return false;
-	}
+        if (pthread_mutex_init(&(program_data->file_mutex_arr[i]), NULL) != MUTEX_INIT_SUCESS) {
 
-	program_data->num_threads = atoi(argv[2]);
-    program_data->num_counters = atoi(argv[3]);
-    program_data->log_enable = atoi(argv[4]);
-
-    if (program_data->num_threads > MAX_NUM_THREADS || program_data->num_counters > MAX_NUM_COUNTERS ||
-        (program_data->log_enable != 0 && program_data->log_enable != 1) ) {
-        return false;
-	}
+            fprintf(stderr, "pthread_mutex_init #%d has failed\n", i);
+            return false;
+        }
+    }
 
     return true;
+}
+
+/*
+ * This function creates the worker threads.
+ */
+int init_pthread_arr()
+{
+    int i;
+    for (i = 0; i < program_data->num_threads; i++) {
+
+        if (pthread_create(&program_data->theards_arr[i], NULL, &worker_start_thread, NULL) != 0) {
+            perror("Failed to create thread");
+            return 1;
+        }
+    }
+
+    return 0;
 }
 
 /*
@@ -300,162 +456,6 @@ int init_counters(void)
     }
 
     return 0;
-}
-
-
-/*
- * This function creates the worker threads.
- */
-int init_pthread_arr()
-{
-    int i;
-    for (i = 0; i < program_data->num_threads; i++) {
-
-        if (pthread_create(&program_data->theards_arr[i], NULL, &worker_start_thread, NULL) != 0) {
-            perror("Failed to create thread");
-            return 1;
-        }
-    }
-
-    return 0;
-}
-
-/*
- * This function cancel the pthreads.
- */
-int finish_pthread_exe()
-{
-    int i;
-
-    for (i = 0; i < program_data->num_threads; i++) {
-        if (pthread_cancel(program_data->theards_arr[i]) != 0) {
-            return 2;
-        }
-    }
-
-    return 0;
-}
-
-/*
- * Wait for all pending background commands to complete .
- */
-void wait_pending_jobs()
-{
-    sleep(10);
-}
-
-
-void freeJob(Job *job) {
-    if(job != NULL) {
-        for(int i = 0; i < job->num_of_commands_to_execute; i++) {
-            free(job->commands_to_execute[i]);
-        }
-        
-        free(job);
-    }
-}
-
-
-
-Job *createJob(char *line)
-{       
-    Job *job  = (Job*)malloc(sizeof(Job));
-	
-    remove_new_line_char(line);
-    job->next_job = NULL;
-    int num_of_commands = 0;
-    
-
-    job->commands_to_execute[num_of_commands] = strtok(line, ";");
-
-    while ( (job->commands_to_execute[num_of_commands] != NULL) ) {
-       job->commands_to_execute[++num_of_commands] = strtok(NULL, ";");
-    }
-    job->num_of_commands_to_execute = num_of_commands;
-
-
-    for(int i = 0; i < num_of_commands; i++) {
-        job->commands_to_execute[i] = strdup(job->commands_to_execute[i]);
-    }
-
-    return job;
-}
-
-
-/* sleep for <ms> milliseconds */
-void sleep_ms(int ms) {
-    usleep(ms * 1000);
-    
-}
-
-
-
-void execute_dispatcher_job(Job *job)
-{
-    int sleep_val;
-
-    if (strcmp(job->commands_to_execute[0] , "dispatcher_wait") == 0) {
-        printf("Dispatcher waiting untill all jobs are done...\n");
-        
-        pthread_mutex_lock(&(JobQueue->queue_mutex));
-
-        pthread_cond_wait(&(JobQueue->all_work_done), &(JobQueue->queue_mutex));
-        
-        pthread_mutex_unlock(&(JobQueue->queue_mutex));
-        printf("all work done, dispatcher waking up..\n");
-    } 
-
-    else if (strncmp(job->commands_to_execute[0], "dispatcher_msleep", strlen("dispatcher_msleep")) == 0) {
-        sleep_val = atoi(job->commands_to_execute[0] + strlen("dispatcher_msleep") );  
-
-        printf("Dispatcher sleepin' for: %d\n\n", sleep_val );
-
-        sleep_ms(sleep_val);
-
-        printf("Dispatcher done sleeping");
-        
-    }
-
-    freeJob(job);
-}
-
-/*
- * This function decide if job is dispatcher or worker job.
- */
-int execute_job(Job *job)
-{
-
-    /* If line is empty continue */
-    if (job->num_of_commands_to_execute == 0)
-        return 0;
-
-    if (strcmp(job->commands_to_execute[0], "worker") == 0) {
-        /* Submit job to worker queue*/
-        submit_job(job);
-    } 
-    
-    else {
-        /* submit job to dispatcher */
-        execute_dispatcher_job(job);
-    }
-
-    return 0;
-}
-
-
-bool init_file_mutex_arr()
-{
-    int i;
-    for (i = 0; i < program_data->num_counters; i++) {
-
-        if (pthread_mutex_init(&(program_data->file_mutex_arr[i]), NULL) != MUTEX_INIT_SUCESS) {
-
-            fprintf(stderr, "pthread_mutex_init #%d has failed\n", i);
-            return false;
-        }
-    }
-
-    return true;
 }
 
 
@@ -511,7 +511,9 @@ int main(int argc, char **argv)
     }
 
 
-
+    if(program_data->num_of_sleeping_threads != program_data->num_threads) {
+        wait_pending_jobs();
+    }
     finish_pthread_exe();
     pthread_cond_destroy(&(JobQueue->queue_not_empty_cond_var));
     pthread_mutex_destroy(&(JobQueue->queue_mutex));
@@ -519,6 +521,7 @@ int main(int argc, char **argv)
     fclose(cmd_file);
     free(JobQueue);
     free(program_data);
+
     clock_t end =  clock();
     printf("Program taken: %lf To complete.\n", (double)(end-start) / CLOCKS_PER_SEC) ;
     return 0;
