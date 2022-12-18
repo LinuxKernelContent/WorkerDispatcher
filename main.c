@@ -26,10 +26,12 @@ typedef struct program_data {
     FILE *log_files_arr[MAX_NUM_THREADS];
 
     /* destroyed at the end of runtime */
-    pthread_mutex_t counter_mutex_arr[MAX_NUM_COUNTERS];
+    pthread_mutex_t counter_mutex_arr[MAX_NUM_COUNTERS];  // initialize one for each counter
 
     /* destroyed at the end of runtime*/
     pthread_t theards_arr[MAX_NUM_THREADS];
+
+    bool kill_all_threads;
 
 } Program_Data;
 
@@ -46,9 +48,9 @@ typedef struct queue {
     Job *first_job;
     Job *last_job;
     int num_of_pending_jobs;
-    pthread_mutex_t queue_mutex;
-    pthread_cond_t queue_not_empty_cond_var;
-    pthread_cond_t all_work_done;
+    pthread_mutex_t queue_mutex;              // initialize
+    pthread_cond_t queue_not_empty_cond_var;  // initialize
+    pthread_cond_t all_work_done;             // initialize
 
 } Queue;
 
@@ -149,9 +151,16 @@ void submitJob(Job *job)
 /* get the number inside the counter file */
 long long int readNumFromCounter(int counter_number)
 {
-    long long int cur_num;
-    FILE *fp = fopen(program_data->files_arr[counter_number], "r");
-    fscanf(fp, "%lld", &cur_num);
+    long long int cur_num = 0;
+    FILE *fp = fopen(program_data->files_arr[counter_number], "r+");
+    if (!fp) {
+        printf("Error opening counter...\n");
+        exit(EXIT_FAILURE);
+    }
+    if (fscanf(fp, "%lld", &cur_num) == EOF) {
+        printf("Error reading from counter...\n");
+        exit(EXIT_FAILURE);
+    }
     fclose(fp);
     return cur_num;
 }
@@ -159,11 +168,15 @@ long long int readNumFromCounter(int counter_number)
 /* increment the counter <counter_number_to_increment>*/
 void increment(int counter_number)
 {
-    long long int counter;
+    long long int counter = 0;
     counter = readNumFromCounter(counter_number);
     counter++;
 
     FILE *fp = fopen(program_data->files_arr[counter_number], "w+");
+    if (!fp) {
+        printf("Error opening counter file...\n");
+        exit(EXIT_FAILURE);
+    }
     fprintf(fp, "%lld", counter);
     fclose(fp);
 }
@@ -171,11 +184,15 @@ void increment(int counter_number)
 /* decrement the counter <counter_number_to_increment>*/
 void decrement(int counter_number)
 {
-    long long int counter;
+    long long int counter = 0;
     counter = readNumFromCounter(counter_number);
     counter--;
 
     FILE *fp = fopen(program_data->files_arr[counter_number], "w+");
+    if (!fp) {
+        printf("Error opening counter...\n");
+        exit(EXIT_FAILURE);
+    }
     fprintf(fp, "%lld", counter);
     fclose(fp);
 }
@@ -200,6 +217,10 @@ void freeJob(Job *job)
 Job *createJob(char *line)
 {
     Job *job = (Job *)malloc(sizeof(Job));
+    if (!job) {
+        fprintf(stderr, "Error allocating memory for Job...\n");
+        exit(EXIT_FAILURE);
+    }
     job->line_copy = strdup(line);
     job->next_job = NULL;
     job->submission_time = getCurrentTime();
@@ -236,7 +257,7 @@ void waitPendingJobs()
 /* Execute the commands (job) given to a worker thread */
 void executeWorkerJob(Job *job)
 {
-    int i = 1, ms_sleep_val, file_number;
+    int i = 1, ms_sleep_val = 0, file_number = 0;
     int repeat_value = 1;
 
     if (strncmp(job->commands_to_execute[1], "repeat", strlen("repeat")) == 0) {
@@ -256,21 +277,35 @@ void executeWorkerJob(Job *job)
 
             else if (strncmp(job->commands_to_execute[i], "increment", strlen("increment")) == 0) {
 
+                int ret;
                 file_number = atoi(job->commands_to_execute[i] + strlen("increment"));
 
-                pthread_mutex_lock(&(program_data->counter_mutex_arr[file_number]));
+                ret = pthread_mutex_lock(&(program_data->counter_mutex_arr[file_number]));
+                if (ret != 0)
+                    exit(EXIT_FAILURE);
+
                 increment(file_number);
-                pthread_mutex_unlock(&(program_data->counter_mutex_arr[file_number]));
+
+                ret = pthread_mutex_unlock(&(program_data->counter_mutex_arr[file_number]));
+
+                if (ret != 0)
+                    exit(EXIT_FAILURE);
 
             }
 
             else if (strncmp(job->commands_to_execute[i], "decrement", strlen("decrement")) == 0) {
-
+                int ret;
                 file_number = atoi(job->commands_to_execute[i] + strlen("decrement"));
 
-                pthread_mutex_lock(&(program_data->counter_mutex_arr[file_number]));
+                ret = pthread_mutex_lock(&(program_data->counter_mutex_arr[file_number]));
+
+                if (ret != 0)
+                    exit(EXIT_FAILURE);
                 decrement(file_number);
-                pthread_mutex_unlock(&(program_data->counter_mutex_arr[file_number]));
+                ret = pthread_mutex_unlock(&(program_data->counter_mutex_arr[file_number]));
+
+                if (ret != 0)
+                    exit(EXIT_FAILURE);
             }
         }
     }
@@ -328,12 +363,11 @@ void *workerThreadFunction(void *arg)
 {
     int id = *((int *)arg);
     free(arg);
-    Job *job;
+    Job *job = NULL;
 
     while (true) {
 
         pthread_mutex_lock(&(JobQueue->queue_mutex));
-
         while (isEmpty()) {
 
             program_data->num_of_sleeping_threads++;
@@ -344,6 +378,9 @@ void *workerThreadFunction(void *arg)
             }
             pthread_cond_wait(&(JobQueue->queue_not_empty_cond_var), &(JobQueue->queue_mutex));
             program_data->num_of_sleeping_threads--;
+        }
+        if (program_data->kill_all_threads) {
+            pthread_exit(NULL);
         }
 
         job = Dequeue();
@@ -382,9 +419,7 @@ void *workerThreadFunction(void *arg)
 
 void initCounterMutexs()
 {
-    int i;
-    for (i = 0; i < program_data->num_counters; i++) {
-
+    for (int i = 0; i < program_data->num_counters; i++) {
         if (pthread_mutex_init(&(program_data->counter_mutex_arr[i]), NULL) != MUTEX_INIT_SUCESS) {
             fprintf(stderr, "pthread_mutex_init #%d has failed\n", i);
             exit(EXIT_FAILURE);
@@ -399,11 +434,14 @@ void initThreadsArr()
 {
     char file_name_buffer[MAX_FILE_NAME_LEN] = {0};
 
-    int i;
-    for (i = 0; i < program_data->num_threads; i++) {
-        int *arg = malloc(sizeof(*arg));
+    for (int i = 0; i < program_data->num_threads; i++) {
+        int *arg = (int *)malloc(sizeof(*arg));
+        if (!arg) {
+            fprintf(stderr, "Error allocating memory...\n");
+            exit(EXIT_FAILURE);
+        }
         *arg = i;
-        if (pthread_create(&program_data->theards_arr[i], NULL, &workerThreadFunction, arg) != 0) {
+        if (pthread_create(&(program_data->theards_arr[i]), NULL, &workerThreadFunction, arg) != 0) {
             perror("Failed to create thread");
             exit(EXIT_FAILURE);
         }
@@ -412,6 +450,11 @@ void initThreadsArr()
         if (program_data->log_enable) {
             sprintf(file_name_buffer, "thread%.2d.txt", i);  // create name
             program_data->log_files_arr[i] = fopen(file_name_buffer, "w+");
+
+            if (program_data->log_files_arr[i] == NULL) {
+                fprintf(stderr, "Error creating log file %d...\n", i);
+                exit(EXIT_FAILURE);
+            }
         }
     }
 }
@@ -422,7 +465,7 @@ void initThreadsArr()
 void initCounters()
 {
     char file_name_buffer[MAX_FILE_NAME_LEN] = {0};
-    FILE *fp;
+    FILE *fp = NULL;
 
     for (int i = 0; i < program_data->num_counters; i++) {
         sprintf(file_name_buffer, "counter%.2d.txt", i);       // create name
@@ -443,6 +486,7 @@ void initCounters()
 /* initialize the program stats struct*/
 void initProgramStats()
 {
+
     program_stats.average_turnaround = 0;
     program_stats.end_time = 0;
     program_stats.total_jobs = 0;
@@ -461,6 +505,12 @@ bool initProgramData(int argc, char **argv)
     }
 
     program_data = (Program_Data *)malloc(sizeof(Program_Data));
+    program_data->kill_all_threads = false;
+
+    if (!program_data) {
+        fprintf(stderr, "Memory allocation for Program_Data failed..\n");
+        exit(EXIT_FAILURE);
+    }
     program_data->num_threads = atoi(argv[2]);
     program_data->num_counters = atoi(argv[3]);
     program_data->log_enable = atoi(argv[4]);
@@ -485,6 +535,9 @@ void initQueue()
     }
 
     pthread_mutex_init(&(JobQueue->queue_mutex), NULL);
+    pthread_cond_init(&(JobQueue->queue_not_empty_cond_var), NULL);
+    pthread_cond_init(&(JobQueue->all_work_done), NULL);
+
     JobQueue->first_job = NULL;
     JobQueue->last_job = NULL;
     JobQueue->num_of_pending_jobs = 0;

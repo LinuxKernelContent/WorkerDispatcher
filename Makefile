@@ -2,7 +2,7 @@ all: main
 .PHONY : all
 
 main: main.c
-	gcc -Wall -Wextra -g -pthread *.c -o main
+	gcc -O0 -Wall -Wextra -g -pthread *.c -o main
 
 
 .PHONY : clean
@@ -16,10 +16,11 @@ clean:
 
 .PHONY : testmem
 testmem:
-	valgrind --leak-check=full --quiet --show-leak-kinds=all --track-origins=yes --verbose ./main cmdfile.txt 5 5 1
+	valgrind --quiet --leak-check=yes -track-origins=yes ./main cmdfile.txt 10 10 1
+
 
 tidycode:
 	clang-format -i *.c
 
 run :
-	./main cmdfile.txt 8 10 1
+	./main cmdfile.txt 10 10 1
