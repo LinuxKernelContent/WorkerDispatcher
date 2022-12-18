@@ -3,7 +3,7 @@ worker;repeat 1;increment 5 ;decrement 6 ;msleep 1000
 worker;repeat 1;increment 5 ;decrement 6 ;msleep 1000
 worker;repeat 1;increment 5 ;decrement 6 ;msleep 1000
 dispatcher_msleep 2000;
-worker;repeat 2;increment 5 ;decrement 6 ;msleep 1000
+worker;repeat 1;increment 5 ;decrement 6 ;msleep 1000
 worker;repeat 1;increment 5 ;decrement 6 ;msleep 1000
 worker;repeat 1;increment 5 ;decrement 6 ;msleep 1000
 worker;repeat 1;increment 5 ;decrement 6 ;msleep 1000

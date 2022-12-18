@@ -20,4 +20,4 @@ tidycode:
 	clang-format -i *.c
 
 run :
-	./main cmdfile.txt 3 10 1
+	./main cmdfile.txt 16 10 1

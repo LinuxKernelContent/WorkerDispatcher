@@ -4,7 +4,7 @@
 #include <stdlib.h>
 #include <string.h>
 #include <sys/syscall.h>
-#include <sys/time.h>
+#include <time.h>
 #include <unistd.h>
 
 #define USER_INPUT_ARGC 5
@@ -52,9 +52,21 @@ typedef struct queue {
 
 } Queue;
 
+typedef struct stats {
+    long long int start_time;
+    long long int end_time;
+    long long int max_turnaround;
+    long long int min_turnaround;
+    long long int total_turnaround;
+    long long int total_jobs;
+    double average_turnaround;
+} Stats;
+
+
+Stats program_stats;
 Program_Data *program_data;
 Queue *JobQueue;
-clock_t start;
+
 
 long long int readNumFromCounter(int counter_number);
 void increment(int counter_number);
@@ -80,6 +92,8 @@ Job *Dequeue();
 
 /* sleep for <ms> milliseconds */
 void sleep_ms(int ms) { usleep(ms * 1000); }
+
+long long int nano_to_ms(long long int nano) { return nano * 0.000001; }
 
 void remove_new_line_char(char *string) { string[strcspn(string, "\n")] = 0; }
 
@@ -180,11 +194,15 @@ Job *createJob(char *line)
     Job *job = (Job *)malloc(sizeof(Job));
     job->line_copy = strdup(line);
     job->next_job = NULL;
-    job->submission_time = gettimeofday();
-    remove_new_line_char(line);
     
-    int num_of_commands = 0;
+    /* get the time of job submission */
+    struct timespec ts;
+    timespec_get(&ts, TIME_UTC);
+    job->submission_time = (long long int)nano_to_ms(ts.tv_nsec) + ts.tv_sec * 1000;
 
+
+    remove_new_line_char(line);
+    int num_of_commands = 0;
     job->commands_to_execute[num_of_commands] = strtok(line, ";");
 
     while ((job->commands_to_execute[num_of_commands] != NULL)) {
@@ -322,8 +340,7 @@ void *workerThreadFunction(void *arg)
 {
     int id = *((int *)arg);
     free(arg);
-
-    clock_t temp;
+    struct timespec ts;
     Job *job;
 
     while (true) {
@@ -350,22 +367,41 @@ void *workerThreadFunction(void *arg)
         }
 
         job = Dequeue();
+        pthread_mutex_unlock(&(JobQueue->queue_mutex));
 
+
+
+
+        timespec_get(&ts, TIME_UTC); // start time of job
         if (program_data->log_enable) {
-            temp = clock();
-            fprintf(program_data->log_files_arr[id], "TIME %lld: START job %s", (long long int)temp - start,
+            fprintf(program_data->log_files_arr[id], "TIME %lld: START job %s", (long long int)nano_to_ms(ts.tv_nsec) + ts.tv_sec * 1000 - program_stats.start_time,
                     job->line_copy);
         }
-        pthread_mutex_unlock(&(JobQueue->queue_mutex));
 
         executeWorkerJob(job);
 
+
+        timespec_get(&ts, TIME_UTC); // end time of job
         if (program_data->log_enable) {
-            temp = clock();
-            fprintf(program_data->log_files_arr[id], "TIME %lld: END job %s", (long long int)temp - start,
-                    job->line_copy);
+            // write end time
+            fprintf(program_data->log_files_arr[id], "TIME %lld: END job %s", (long long int)nano_to_ms(ts.tv_nsec) + ts.tv_sec * 1000  - program_stats.start_time, job->line_copy);
         }
-        printf("Time took for job = %lld\n", (long long int)gettimeofday() - job->submission_time);
+
+
+        /* CALCULATE STATS */    
+        long long int turnaround_time = nano_to_ms(ts.tv_nsec) + ts.tv_sec * 1000  - job->submission_time;
+        
+        program_stats.total_jobs++;
+        program_stats.total_turnaround += turnaround_time;
+
+        if(turnaround_time > program_stats.max_turnaround) {
+            program_stats.max_turnaround = turnaround_time;
+        }
+
+        if(turnaround_time < program_stats.min_turnaround || program_stats.min_turnaround == -1) {
+            program_stats.min_turnaround = turnaround_time;
+        }
+
         freeJob(job);
     }
 }
@@ -432,6 +468,21 @@ int initCounters(void)
     return 0;
 }
 
+
+void initProgramStats() {
+    program_stats.average_turnaround = 0;
+    program_stats.end_time = 0;
+    program_stats.total_jobs = 0;
+    program_stats.total_turnaround = 0;
+    program_stats.min_turnaround = -1;
+    program_stats.max_turnaround = -1;
+
+
+    struct timespec ts;
+    timespec_get(&ts, TIME_UTC);
+    program_stats.start_time = (long long int)nano_to_ms(ts.tv_nsec) + ts.tv_sec * 1000;
+}
+
 /*
  * This function validates user input, and builds the struct Program_Data
  */
@@ -446,6 +497,7 @@ bool initProgramData(int argc, char **argv)
     program_data->num_counters = atoi(argv[3]);
     program_data->log_enable = atoi(argv[4]);
     program_data->num_of_sleeping_threads = 0;
+
 
     /* validate input */
     if (program_data->num_threads > MAX_NUM_THREADS || program_data->num_counters > MAX_NUM_COUNTERS ||
@@ -465,18 +517,21 @@ void initQueue()
     JobQueue->num_of_pending_jobs = 0;
 }
 
+
 int main(int argc, char **argv)
 {
-    start = clock();
     int valid_args, line_size;
     char *line_buf = NULL;
     size_t line_buffer_size = 0;
     Job *current_job;
-    clock_t temp;
-    int counter = 1;
-
+    struct timespec ts;
     
-    /* Check user args */
+    /* INITIALIZATIONS AND VALIDATIONS */ 
+
+    initProgramStats();
+
+
+
     valid_args = initProgramData(argc, argv);
     if (valid_args == false) {
         fprintf(stderr, "Invalid argv...\n");
@@ -500,6 +555,7 @@ int main(int argc, char **argv)
         exit(EXIT_FAILURE);
     }
 
+
     initQueue();
     initCounters();
     initThreadsArr();
@@ -508,34 +564,42 @@ int main(int argc, char **argv)
 
     /* Loop through until we are done with the file. */
     while ((line_size = getline(&line_buf, &line_buffer_size, cmd_file)) != EOF) {
+        
+        timespec_get(&ts, TIME_UTC);
         if(program_data->log_enable) {
-            temp = clock();
-            fprintf(dispatcher_log, ": TIME %lld: read cmd line: %s", (long long int)temp - start, line_buf);
+            fprintf(dispatcher_log, ": TIME %lld: read cmd line: %s", (long long int)nano_to_ms(ts.tv_nsec) + ts.tv_sec * 1000  - program_stats.start_time  , line_buf);
         }
-        printf("Line: %d\n", counter++);
 
         current_job = createJob(line_buf);
-
         handleJob(current_job);
     }
 
+    /* WAIT FOR PENDING JOBS TO COMPLETE*/
     if (program_data->num_of_sleeping_threads != program_data->num_threads) {
         printf("Waiting for all jobs to complete before exiting...\n");
         waitPendingJobs();
     }
-    printf("work done, exiting program...\n");
-    
-    /* create stats */
-    if(program_data->log_enable) {
-        temp = clock();
-        fprintf(stats_file, "total running time: %lld milliseconds", (long long int)temp - start);
-        // fprintf(stats_file, "sum of jobs turnaround time: %lld milliseconds",                   );
-        // fprintf(stats_file, "min job turnaround time: %lld milliseconds",                       );
-        // fprintf(stats_file, "average job turnaround time: %f milliseconds",                     );
-        // fprintf(stats_file, "max job turnaround time: %lld milliseconds",                       );
-    }                      
+
+
+
+
+    /* WRITE STATS */
+
+    timespec_get(&ts, TIME_UTC);
+    program_stats.end_time = (long long int)nano_to_ms(ts.tv_nsec) + ts.tv_sec * 1000;
+    program_stats.average_turnaround = program_stats.total_turnaround / program_stats.total_jobs;
+
+    fprintf(stats_file, "total running time: %lld milliseconds\n", (long long int)(program_stats.end_time - program_stats.start_time));
+    fprintf(stats_file, "sum of jobs turnaround time: %lld milliseconds\n", (long long int)program_stats.total_turnaround);
+    fprintf(stats_file, "min job turnaround time: %lld milliseconds\n", (long long int)program_stats.min_turnaround);
+    fprintf(stats_file, "average job turnaround time: %f milliseconds\n", (double)program_stats.average_turnaround);
+    fprintf(stats_file, "max job turnaround time: %lld milliseconds\n", (long long int)program_stats.max_turnaround);
+
 
     
+
+
+    /* END OF PROGRAM PROCEDURE */
     // stop threads
     killAllThreads();
 
