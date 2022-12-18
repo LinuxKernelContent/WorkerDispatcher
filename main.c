@@ -337,7 +337,7 @@ void *workerThreadFunction(void *arg)
         while (isEmpty()) {
 
             program_data->num_of_sleeping_threads++;
-            
+
             /* "signal" the main thread if all theads are sleeping */
             if (program_data->num_of_sleeping_threads == program_data->num_threads) {
                 pthread_cond_signal(&(JobQueue->all_work_done));
