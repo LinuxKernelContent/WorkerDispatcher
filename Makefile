@@ -7,9 +7,11 @@ main: main.c
 
 .PHONY : clean
 clean:
-	\rm main 
-	\rm thread*.txt
-	\rm counter*.txt
+	\rm main || true
+	\rm thread*.txt || true
+	\rm counter*.txt || true
+	\rm file_stats.txt || true
+	\rm dispatcher.txt || true
 
 
 .PHONY : testmem

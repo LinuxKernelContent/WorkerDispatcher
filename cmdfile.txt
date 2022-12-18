@@ -6,7 +6,30 @@ worker;repeat 1;increment 5 ;decrement 6 ;msleep 1000
 worker;repeat 1;increment 5 ;decrement 6 ;msleep 1000
 worker;repeat 4;increment 5 ;decrement 6 ;msleep 1000
 worker;repeat 1;increment 5 ;decrement 6 ;msleep 1000
-worker;repeat 1;increment 5 ;decrement 6 ;msleep 1000
+worker;repeat 200;increment 1;;increment 8 ;decrement 2;
+worker;repeat 200;increment 1;;increment 8 ;decrement 2;
+worker;repeat 200;increment 1;;increment 8 ;decrement 2;
+worker;repeat 200;increment 1;;increment 8 ;decrement 2;
+worker;repeat 200;increment 1;;increment 8 ;decrement 2;
+worker;repeat 200;increment 1;;increment 8 ;decrement 2;
+worker;repeat 200;increment 1;;increment 8 ;decrement 2;
+worker;repeat 200;increment 1;;increment 8 ;decrement 2;
+worker;repeat 200;increment 1;;increment 8 ;decrement 2;
+worker;repeat 200;increment 1;;increment 8 ;decrement 2;
+worker;repeat 200;increment 1;;increment 8 ;decrement 2;
+worker;repeat 200;increment 1;;increment 8 ;decrement 2;
+worker;repeat 200;increment 1;;increment 8 ;decrement 2;
+worker;repeat 200;increment 1;;increment 8 ;decrement 2;
+worker;repeat 200;increment 1;;increment 8 ;decrement 2;
+worker;repeat 200;increment 1;;increment 8 ;decrement 2;
+worker;repeat 200;increment 1;;increment 8 ;decrement 2;
+worker;repeat 200;increment 1;;increment 8 ;decrement 2;
+worker;repeat 200;increment 1;;increment 8 ;decrement 2;
+worker;repeat 200;increment 1;;increment 8 ;decrement 2;
+worker;repeat 200;increment 1;;increment 8 ;decrement 2;
+worker;repeat 200;increment 1;;increment 8 ;decrement 2;
+worker;repeat 200;increment 1;;increment 8 ;decrement 2;
+worker;repeat 200;increment 1;;increment 8 ;decrement 2;
 worker;repeat 4;increment 5 ;decrement 6 ;msleep 1000
 worker;repeat 1;increment 5 ;decrement 6 ;msleep 1000
 worker;repeat 1;increment 5 ;decrement 6 ;msleep 1000
@@ -20,6 +43,7 @@ worker;repeat 4;increment 5 ;decrement 6 ;msleep 1000
 worker;repeat 1;increment 5 ;decrement 6 ;msleep 1000
 worker;repeat 1;increment 5 ;decrement 6 ;msleep 1000
 worker;repeat 4;increment 5 ;decrement 6 ;msleep 1000
+dispatcher_wait;
 worker;repeat 1;increment 5 ;decrement 6 ;msleep 1000
 worker;repeat 1;increment 5 ;decrement 6 ;msleep 1000
 worker;repeat 4;increment 5 ;decrement 6 ;msleep 1000

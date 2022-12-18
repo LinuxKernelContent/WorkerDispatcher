@@ -36,7 +36,7 @@ typedef struct program_data {
 typedef struct job {
     long long int submission_time;
     char *line_copy;
-    char *commands_to_execute[MAX_LINE_SIZE];  // line_copy - split into tokens
+    char *commands_to_execute[MAX_LINE_SIZE];
     int num_of_commands_to_execute;
     struct job *next_job;
 
@@ -65,6 +65,7 @@ typedef struct stats {
 Stats program_stats;
 Program_Data *program_data;
 Queue *JobQueue;
+
 long long int getCurrentTime();
 long long int readNumFromCounter(int counter_number);
 void increment(int counter_number);
@@ -73,7 +74,7 @@ void remove_new_line_char(char *string);
 void submitJob(Job *job);
 void *workerThreadFunction();
 bool initProgramData(int argc, char **argv);
-int killAllThreads();
+void killAllThreads();
 void waitPendingJobs();
 void freeJob(Job *job);
 Job *createJob(char *line);
@@ -88,32 +89,34 @@ bool isEmpty();
 void Enqueue(Job *job);
 Job *Dequeue();
 
+/* FUNCTIONS */
+
 /* sleep for <ms> milliseconds */
 void sleep_ms(int ms) { usleep(ms * 1000); }
-
-long long int nano_to_ms(long long int nano) { return nano * 0.000001; }
 
 void remove_new_line_char(char *string) { string[strcspn(string, "\n")] = 0; }
 
 /* Queue functions */
 bool isEmpty() { return JobQueue->num_of_pending_jobs == 0; }
 
+/* Insert a new job into the queue */
 void Enqueue(Job *job)
 {
-
-    printf("Enqueing, num of jobs pending %d \n", JobQueue->num_of_pending_jobs + 1);
 
     if (isEmpty()) {
         JobQueue->first_job = job;
         JobQueue->last_job = job;
         JobQueue->num_of_pending_jobs = 1;
-    } else {
+    }
+
+    else {
         JobQueue->last_job->next_job = job;
         JobQueue->last_job = job;
         JobQueue->num_of_pending_jobs++;
     }
 }
 
+/* Pop a job from the queue*/
 Job *Dequeue()
 {
 
@@ -123,8 +126,6 @@ Job *Dequeue()
 
     else {
         Job *first_job = JobQueue->first_job;
-
-        printf("Dequeing, num of jobs pending: %d\n", JobQueue->num_of_pending_jobs - 1);
 
         JobQueue->first_job = JobQueue->first_job->next_job;
         JobQueue->num_of_pending_jobs--;
@@ -136,13 +137,16 @@ Job *Dequeue()
 /* insert a job to the queue*/
 void submitJob(Job *job)
 {
+    /* lock and submit the job to the queue */
     pthread_mutex_lock(&(JobQueue->queue_mutex));
     Enqueue(job);
     pthread_mutex_unlock(&(JobQueue->queue_mutex));
 
+    /* signal all sleeping threads to wake up */
     pthread_cond_broadcast(&(JobQueue->queue_not_empty_cond_var));
 }
 
+/* get the number inside the counter file */
 long long int readNumFromCounter(int counter_number)
 {
     long long int cur_num;
@@ -176,27 +180,33 @@ void decrement(int counter_number)
     fclose(fp);
 }
 
+/* Free the struct job, and all allocated memory inside it */
 void freeJob(Job *job)
 {
+
     if (job != NULL) {
+        /* free deep copies of tokens*/
         for (int i = 0; i < job->num_of_commands_to_execute; i++) {
             free(job->commands_to_execute[i]);
         }
+        /* free the copy of line*/
         free(job->line_copy);
+
         free(job);
     }
 }
 
+/* allocate memory and create the Job */
 Job *createJob(char *line)
 {
     Job *job = (Job *)malloc(sizeof(Job));
     job->line_copy = strdup(line);
     job->next_job = NULL;
-
-    /* get the time of job submission */
     job->submission_time = getCurrentTime();
 
     remove_new_line_char(line);
+
+    /* split line into tokens */
     int num_of_commands = 0;
     job->commands_to_execute[num_of_commands] = strtok(line, ";");
 
@@ -205,6 +215,7 @@ Job *createJob(char *line)
     }
     job->num_of_commands_to_execute = num_of_commands;
 
+    /* copy and store tokens, we perform a deep copy so different threads would not interfere */
     for (int i = 0; i < num_of_commands; i++) {
         job->commands_to_execute[i] = strdup(job->commands_to_execute[i]);
     }
@@ -213,7 +224,7 @@ Job *createJob(char *line)
 }
 
 /*
- * Wait for all pending background commands to complete .
+ * Wait for all pending jobs to complete .
  */
 void waitPendingJobs()
 {
@@ -222,6 +233,7 @@ void waitPendingJobs()
     pthread_mutex_unlock(&(JobQueue->queue_mutex));
 }
 
+/* Execute the commands (job) given to a worker thread */
 void executeWorkerJob(Job *job)
 {
     int i = 1, ms_sleep_val, file_number;
@@ -264,6 +276,7 @@ void executeWorkerJob(Job *job)
     }
 }
 
+/* Execute the commands (job) given to the dispatcher (main thread) */
 void executeDispatcherJob(Job *job)
 {
 
@@ -272,15 +285,12 @@ void executeDispatcherJob(Job *job)
     }
 
     else if (strncmp(job->commands_to_execute[0], "dispatcher_msleep", strlen("dispatcher_msleep")) == 0) {
-
         int sleep_val = atoi(job->commands_to_execute[0] + strlen("dispatcher_msleep"));
         sleep_ms(sleep_val);
     }
 }
 
-/*
- * This function decide if job is dispatcher or worker job.
- */
+/* Refer the job either to be executed serially on the main thread, or on a worker thread */
 void handleJob(Job *job)
 {
 
@@ -300,20 +310,15 @@ void handleJob(Job *job)
     }
 }
 
-/*
- * This function cancel the pthreads.
- */
-int killAllThreads()
+/* stop all running threads*/
+void killAllThreads()
 {
-    int i;
-
-    for (i = 0; i < program_data->num_threads; i++) {
+    for (int i = 0; i < program_data->num_threads; i++) {
         if (pthread_cancel(program_data->theards_arr[i]) != 0) {
-            return 2;
+            fprintf(stderr, "Error stopping thread #%d", i);
+            exit(EXIT_FAILURE);
         }
     }
-
-    return 0;
 }
 
 /*
@@ -323,7 +328,6 @@ void *workerThreadFunction(void *arg)
 {
     int id = *((int *)arg);
     free(arg);
-    struct timespec ts;
     Job *job;
 
     while (true) {
@@ -331,13 +335,13 @@ void *workerThreadFunction(void *arg)
         pthread_mutex_lock(&(JobQueue->queue_mutex));
 
         while (isEmpty()) {
-            program_data->num_of_sleeping_threads++;
 
-            /* "signal" the main thread that this thread is sleeping.*/
+            program_data->num_of_sleeping_threads++;
+            
+            /* "signal" the main thread if all theads are sleeping */
             if (program_data->num_of_sleeping_threads == program_data->num_threads) {
                 pthread_cond_signal(&(JobQueue->all_work_done));
             }
-
             pthread_cond_wait(&(JobQueue->queue_not_empty_cond_var), &(JobQueue->queue_mutex));
             program_data->num_of_sleeping_threads--;
         }
@@ -345,21 +349,16 @@ void *workerThreadFunction(void *arg)
         job = Dequeue();
         pthread_mutex_unlock(&(JobQueue->queue_mutex));
 
-        timespec_get(&ts, TIME_UTC);  // start time of job
         if (program_data->log_enable) {
             fprintf(program_data->log_files_arr[id], "TIME %lld: START job %s",
-                    getCurrentTime() - program_stats.start_time,
-                    job->line_copy);
+                    getCurrentTime() - program_stats.start_time, job->line_copy);
         }
 
         executeWorkerJob(job);
 
-        timespec_get(&ts, TIME_UTC);  // end time of job
         if (program_data->log_enable) {
-            // write end time
             fprintf(program_data->log_files_arr[id], "TIME %lld: END job %s",
-                    getCurrentTime() - program_stats.start_time,
-                    job->line_copy);
+                    getCurrentTime() - program_stats.start_time, job->line_copy);
         }
 
         /* CALCULATE STATS */
@@ -376,6 +375,7 @@ void *workerThreadFunction(void *arg)
             program_stats.min_turnaround = turnaround_time;
         }
 
+        /* Job done */
         freeJob(job);
     }
 }
@@ -483,6 +483,7 @@ void initQueue()
         fprintf(stderr, "Memory allocation failed..\n");
         exit(EXIT_FAILURE);
     }
+
     pthread_mutex_init(&(JobQueue->queue_mutex), NULL);
     JobQueue->first_job = NULL;
     JobQueue->last_job = NULL;
@@ -503,19 +504,22 @@ void writeStats(FILE *stats_file)
     fprintf(stats_file, "max job turnaround time: %lld milliseconds\n", (long long int)program_stats.max_turnaround);
 }
 
-long long int getCurrentTime() {
+/* get the current time in MS */
+long long int getCurrentTime()
+{
     struct timespec ts;
     timespec_get(&ts, TIME_UTC);
-    return (long long int)nano_to_ms(ts.tv_nsec) + ts.tv_sec * 1000;
+    return (long long int)ts.tv_nsec * 0.000001 + ts.tv_sec * 1000;
 }
-
 
 int main(int argc, char **argv)
 {
-    int valid_args, line_size;
+    bool valid_args;
     char *line_buf = NULL;
     size_t line_buffer_size = 0;
     Job *current_job;
+    FILE *dispatcher_log, *stats_file, *cmd_file;
+
     /* INITIALIZATIONS AND VALIDATIONS */
 
     initProgramStats();
@@ -526,18 +530,21 @@ int main(int argc, char **argv)
         exit(EXIT_FAILURE);
     }
 
-    FILE *dispatcher_log = fopen("dispatcher.txt", "w+");
-    if (!dispatcher_log) {
-        fprintf(stderr, "Error creating file: dispatcher.txt");
-        exit(EXIT_FAILURE);
+    if (program_data->log_enable) {
+        dispatcher_log = fopen("dispatcher.txt", "w+");
+        if (!dispatcher_log) {
+            fprintf(stderr, "Error creating file: dispatcher.txt");
+            exit(EXIT_FAILURE);
+        }
     }
-    FILE *stats_file = fopen("file_stats.txt", "w+");
+
+    stats_file = fopen("file_stats.txt", "w+");
     if (!stats_file) {
         fprintf(stderr, "Error creating file: file stats.txt");
         exit(EXIT_FAILURE);
     }
 
-    FILE *cmd_file = fopen(argv[1], "r");
+    cmd_file = fopen(argv[1], "r");
     if (!cmd_file) {
         fprintf(stderr, "Error opening file '%s'\n", argv[1]);
         exit(EXIT_FAILURE);
@@ -549,13 +556,12 @@ int main(int argc, char **argv)
     initCounterMutexs();
 
     /* Loop through until we are done with the file. */
-    while ((line_size = getline(&line_buf, &line_buffer_size, cmd_file)) != EOF) {
-
+    while (getline(&line_buf, &line_buffer_size, cmd_file) != EOF) {
         /* write to dispatcher log file*/
         if (program_data->log_enable) {
 
-            fprintf(dispatcher_log, ": TIME %lld: read cmd line: %s",
-                     getCurrentTime() - program_stats.start_time, line_buf);
+            fprintf(dispatcher_log, ": TIME %lld: read cmd line: %s", getCurrentTime() - program_stats.start_time,
+                    line_buf);
         }
 
         current_job = createJob(line_buf);
@@ -566,12 +572,11 @@ int main(int argc, char **argv)
     if (program_data->num_of_sleeping_threads != program_data->num_threads) {
         waitPendingJobs();
     }
-    program_stats.end_time = getCurrentTime();
 
+    program_stats.end_time = getCurrentTime();
 
     /* WRITE STATS */
     writeStats(stats_file);
-
     // stop threads
     killAllThreads();
 
@@ -587,11 +592,13 @@ int main(int argc, char **argv)
 
     /* close files */
     fclose(cmd_file);
-    for (int i = 0; i < program_data->num_threads; i++) {
-        fclose(program_data->log_files_arr[i]);
+    if (program_data->log_enable) {
+        for (int i = 0; i < program_data->num_threads; i++) {
+            fclose(program_data->log_files_arr[i]);
+        }
+        fclose(dispatcher_log);
     }
     fclose(stats_file);
-    fclose(dispatcher_log);
 
     // free structs | heap variables
     free(line_buf);
