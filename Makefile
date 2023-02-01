@@ -2,12 +2,12 @@ all: main
 .PHONY : all
 
 main: main.c
-	gcc -Wall -Wextra -g -pthread *.c -o hw2
+	gcc -Wall -Wextra -g -pthread main.c -o worker_dispatcher
 
 
 .PHONY : clean
 clean:
-	\rm hw2 || true
+	\rm worker_dispatcher || true
 	\rm thread*.txt || true
 	\rm counter*.txt || true
 	\rm file_stats.txt || true

@@ -1,6 +1,5 @@
 #ifndef MAIN_H
 #define MAIN_H
-
 #include <pthread.h>
 #include <stdbool.h>
 #include <stdio.h>
@@ -29,17 +28,19 @@ typedef struct program_data {
     FILE *log_files_arr[MAX_NUM_THREADS];
 
     /* destroyed at the end of runtime */
-    pthread_mutex_t counter_mutex_arr[MAX_NUM_COUNTERS];
+    pthread_mutex_t counter_mutex_arr[MAX_NUM_COUNTERS];  // initialize one for each counter
 
     /* destroyed at the end of runtime*/
     pthread_t theards_arr[MAX_NUM_THREADS];
+
+    bool kill_all_threads;
 
 } Program_Data;
 
 typedef struct job {
     long long int submission_time;
     char *line_copy;
-    char *commands_to_execute[MAX_LINE_SIZE];  // line_copy - split into tokens
+    char *commands_to_execute[MAX_LINE_SIZE];
     int num_of_commands_to_execute;
     struct job *next_job;
 
@@ -49,9 +50,9 @@ typedef struct queue {
     Job *first_job;
     Job *last_job;
     int num_of_pending_jobs;
-    pthread_mutex_t queue_mutex;
-    pthread_cond_t queue_not_empty_cond_var;
-    pthread_cond_t all_work_done;
+    pthread_mutex_t queue_mutex;              // requires initialization
+    pthread_cond_t queue_not_empty_cond_var;  // requires initialization
+    pthread_cond_t all_work_done;             // requires initialization
 
 } Queue;
 
@@ -74,7 +75,7 @@ void remove_new_line_char(char *string);
 void submitJob(Job *job);
 void *workerThreadFunction();
 bool initProgramData(int argc, char **argv);
-int killAllThreads();
+void killAllThreads();
 void waitPendingJobs();
 void freeJob(Job *job);
 Job *createJob(char *line);
