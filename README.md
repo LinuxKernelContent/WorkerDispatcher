@@ -52,7 +52,6 @@ Without threads log files:
 
 2. `worker_dispatcher test.txt 5 10 0`
 
-
 to clean up after the program finishes running:
 
 3. `make clean `  
