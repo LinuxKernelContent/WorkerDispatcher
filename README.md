@@ -28,7 +28,6 @@ worker;increment 5;;msleep 1000
 
 
 ## Summary
-
 - ### Dispatcher inserts jobs into a queue serially.
 - ### In the background, worker threads read from the queue and executes the pending jobs.
 
