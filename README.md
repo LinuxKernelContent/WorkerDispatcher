@@ -54,4 +54,3 @@ Without threads log files:
 to clean up after the program finishes running:
 
 3. `make clean `
-
