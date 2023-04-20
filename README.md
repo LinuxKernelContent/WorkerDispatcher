@@ -33,8 +33,6 @@ worker;increment 5;;msleep 1000
 
 
 
-
-
 # How to run the code ?
 ## note:
 - Maximum threads number is 4096
